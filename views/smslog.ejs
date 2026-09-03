@@ -1,0 +1,19 @@
+<%- include('partials/header') %>
+<h1>SMS Geçmişi</h1>
+<div class="card">
+  <% if (!list.length) { %><div class="empty">Henüz SMS gönderilmemiş.</div><% } else { %>
+  <table>
+    <tr><th>Zaman</th><th>Alıcı</th><th>Mesaj</th><th>Sağlayıcı</th><th>Durum</th></tr>
+    <% for (const s of list) { %>
+    <tr>
+      <td class="small"><%= formatDateTime(s.created_at) %><br><span class="muted"><%= s.sent_by === 'zamanlayici' ? 'otomatik' : s.sent_by %></span></td>
+      <td><% if (s.owner_id) { %><a href="/sahipler/<%= s.owner_id %>"><%= s.owner_name || '—' %></a><% } else { %><%= s.owner_name || '—' %><% } %><br><span class="small mono muted"><%= formatPhone(s.phone) %></span><% if (s.pet_name) { %><br><span class="small"><%= s.pet_name %></span><% } %></td>
+      <td class="small pre"><%= s.message %></td>
+      <td class="small"><%= s.provider %><% if (s.provider_ref) { %><br><span class="mono muted"><%= s.provider_ref %></span><% } %></td>
+      <td><span class="badge <%= s.status === 'sent' ? 'ok' : 'failed' %>"><%= s.status === 'sent' ? 'Gönderildi' : 'Hata' %></span><% if (s.error) { %><br><span class="small muted"><%= s.error %></span><% } %></td>
+    </tr>
+    <% } %>
+  </table>
+  <% } %>
+</div>
+<%- include('partials/footer') %>

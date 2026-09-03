@@ -1,0 +1,55 @@
+<%- include('partials/header') %>
+<h1>Kullanıcılar</h1>
+<div class="card">
+  <table>
+    <tr><th>Ad</th><th>E-posta</th><th>Rol</th><th>Durum</th><th>Son giriş</th><th></th></tr>
+    <% for (const u of list) { %>
+    <tr>
+      <td><%= u.name %><% if (u.id === user.id) { %> <span class="small muted">(siz)</span><% } %></td>
+      <td><%= u.email %></td>
+      <td><%= u.role === 'admin' ? 'Yönetici' : 'Personel' %></td>
+      <td><% if (u.active) { %><span class="badge ok">Aktif</span><% } else { %><span class="badge cancelled">Pasif</span><% } %></td>
+      <td class="small"><%= formatDateTime(u.last_login_at) || '—' %></td>
+      <td class="actions">
+        <% if (u.id !== user.id) { %>
+          <form method="post" action="/kullanicilar/<%= u.id %>/durum"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="active" value="<%= u.active ? 0 : 1 %>"><button class="btn sm secondary" type="submit"><%= u.active ? 'Pasifleştir' : 'Aktifleştir' %></button></form>
+          <form method="post" action="/kullanicilar/<%= u.id %>/rol"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="role" value="<%= u.role === 'admin' ? 'staff' : 'admin' %>"><button class="btn sm secondary" type="submit"><%= u.role === 'admin' ? 'Personel yap' : 'Yönetici yap' %></button></form>
+          <form method="post" action="/kullanicilar/<%= u.id %>/sil" data-confirm="Kullanıcı silinsin mi?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn sm danger" type="submit">Sil</button></form>
+        <% } %>
+      </td>
+    </tr>
+    <% } %>
+  </table>
+</div>
+
+<h2>Yeni kullanıcı</h2>
+<div class="card">
+  <% if (error) { %><div class="flash err"><%= error %></div><% } %>
+  <form method="post" action="/kullanicilar">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <div class="form-grid">
+      <div><label for="name">Ad Soyad *</label><input id="name" type="text" name="name" required maxlength="80" value="<%= form.name || '' %>"></div>
+      <div><label for="email">E-posta *</label><input id="email" type="email" name="email" required maxlength="120" value="<%= form.email || '' %>"></div>
+      <div><label for="password">Parola *</label><input id="password" type="password" name="password" required autocomplete="new-password"><div class="help">En az 8 karakter, harf ve rakam içermeli.</div></div>
+      <div><label for="role">Rol</label>
+        <select id="role" name="role">
+          <option value="staff" <%= form.role !== 'admin' ? 'selected' : '' %>>Personel</option>
+          <option value="admin" <%= form.role === 'admin' ? 'selected' : '' %>>Yönetici</option>
+        </select></div>
+    </div>
+    <div class="form-actions"><button class="btn" type="submit">Kullanıcı ekle</button></div>
+  </form>
+</div>
+
+<h2>Parola sıfırla</h2>
+<div class="card">
+  <form method="post" action="/kullanicilar/sifre-sifirla" class="row">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <select name="user_id" style="max-width:260px">
+      <% for (const u of list) { if (u.id === user.id) continue; %><option value="<%= u.id %>"><%= u.name %> (<%= u.email %>)</option><% } %>
+    </select>
+    <input type="password" name="password" placeholder="Yeni parola" required autocomplete="new-password" style="max-width:220px">
+    <button class="btn secondary" type="submit">Sıfırla</button>
+  </form>
+</div>
+<%- include('partials/footer') %>

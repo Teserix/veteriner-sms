@@ -1,0 +1,16 @@
+<%- include('partials/header') %>
+<div class="login-wrap">
+  <h1>Giriş</h1>
+  <div class="card">
+    <% if (error) { %><div class="flash err"><%= error %></div><% } %>
+    <form method="post" action="/giris">
+      <input type="hidden" name="next" value="<%= next || '' %>">
+      <label for="email">E-posta</label>
+      <input id="email" type="email" name="email" required autocomplete="username" autofocus value="<%= email || '' %>">
+      <label for="password">Parola</label>
+      <input id="password" type="password" name="password" required autocomplete="current-password">
+      <div class="form-actions"><button class="btn" type="submit">Giriş yap</button></div>
+    </form>
+  </div>
+</div>
+<%- include('partials/footer') %>

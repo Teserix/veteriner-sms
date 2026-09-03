@@ -1,0 +1,29 @@
+<%- include('partials/header') %>
+<div class="row between">
+  <h1>Hasta Sahipleri</h1>
+  <a class="btn" href="/sahipler/yeni">+ Yeni hasta sahibi</a>
+</div>
+<div class="card">
+  <form method="get" action="/sahipler" class="search">
+    <input type="text" name="q" placeholder="Ad veya telefon ara…" value="<%= q %>">
+    <button class="btn secondary" type="submit">Ara</button>
+    <% if (q) { %><a class="btn secondary" href="/sahipler">Temizle</a><% } %>
+  </form>
+</div>
+<div class="card">
+  <% if (!list.length) { %><div class="empty">Kayıt bulunamadı.</div><% } else { %>
+  <table>
+    <tr><th>Ad</th><th>Telefon</th><th>Hayvan</th><th>SMS</th><th></th></tr>
+    <% for (const o of list) { %>
+    <tr>
+      <td><a href="/sahipler/<%= o.id %>"><%= o.name %></a></td>
+      <td class="mono"><%= formatPhone(o.phone) %></td>
+      <td><%= o.pet_count %></td>
+      <td><% if (o.sms_opt_in) { %><span class="badge ok">Açık</span><% } else { %><span class="badge cancelled">Kapalı</span><% } %></td>
+      <td class="actions"><a class="btn sm secondary" href="/sahipler/<%= o.id %>">Detay</a></td>
+    </tr>
+    <% } %>
+  </table>
+  <% } %>
+</div>
+<%- include('partials/footer') %>

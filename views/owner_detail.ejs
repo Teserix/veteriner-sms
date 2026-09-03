@@ -1,0 +1,84 @@
+<%- include('partials/header') %>
+<div class="row between">
+  <h1><%= owner.name %></h1>
+  <div class="row">
+    <a class="btn secondary" href="/sahipler/<%= owner.id %>/duzenle">Düzenle</a>
+    <form method="post" action="/sahipler/<%= owner.id %>/sil" data-confirm="Bu hasta sahibi, tüm hayvanları ve hatırlatmaları silinecek. Emin misiniz?">
+      <input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn danger" type="submit">Sil</button>
+    </form>
+  </div>
+</div>
+<div class="card">
+  <div class="row">
+    <div><strong>Telefon:</strong> <span class="mono"><%= formatPhone(owner.phone) %></span></div>
+    <% if (owner.email) { %><div><strong>E-posta:</strong> <%= owner.email %></div><% } %>
+    <div><strong>SMS:</strong> <% if (owner.sms_opt_in) { %><span class="badge ok">Açık</span><% } else { %><span class="badge cancelled">Kapalı</span><% } %></div>
+  </div>
+  <% if (owner.notes) { %><p class="pre small"><%= owner.notes %></p><% } %>
+</div>
+
+<div class="row between"><h2>Hayvanlar</h2><a class="btn sm" href="/sahipler/<%= owner.id %>/hayvan/yeni">+ Hayvan ekle</a></div>
+<div class="card">
+  <% if (!petList.length) { %><div class="empty">Henüz hayvan eklenmemiş.</div><% } else { %>
+  <table>
+    <tr><th>Ad</th><th>Tür / Irk</th><th>Cinsiyet</th><th>Doğum</th><th></th></tr>
+    <% for (const p of petList) { %>
+    <tr>
+      <td><strong><%= p.name %></strong></td>
+      <td><%= p.species || '' %><%= p.breed ? ' / ' + p.breed : '' %></td>
+      <td><%= p.sex || '' %></td>
+      <td><%= formatDate(p.birth_date) %></td>
+      <td class="actions">
+        <a class="btn sm" href="/hayvanlar/<%= p.id %>/hatirlatma/yeni">+ Hatırlatma</a>
+        <a class="btn sm secondary" href="/hayvanlar/<%= p.id %>/duzenle">Düzenle</a>
+        <form method="post" action="/hayvanlar/<%= p.id %>/sil" data-confirm="Hayvan ve hatırlatmaları silinecek. Emin misiniz?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn sm danger" type="submit">Sil</button></form>
+      </td>
+    </tr>
+    <% } %>
+  </table>
+  <% } %>
+</div>
+
+<h2>Hatırlatmalar</h2>
+<div class="card">
+  <% if (!reminderList.length) { %><div class="empty">Hatırlatma yok.</div><% } else { %>
+  <table>
+    <tr><th>Tarih</th><th>Hayvan</th><th>Hatırlatma</th><th>Bildirim</th><th>Durum</th><th></th></tr>
+    <% for (const r of reminderList) { %>
+    <tr>
+      <td><%= formatDate(r.due_date) %></td>
+      <td><%= r.pet_name %></td>
+      <td><%= r.title %> <span class="small muted">(<%= REMINDER_TYPES[r.type] || r.type %>)</span><% if (r.repeat_days) { %><br><span class="small muted">her <%= r.repeat_days %> günde tekrar</span><% } %></td>
+      <td class="small"><%= r.notify_days_before %> gün önce<% if (r.sent_at) { %><br><span class="muted">gönderildi: <%= formatDateTime(r.sent_at) %></span><% } %></td>
+      <td><span class="badge <%= r.status %>"><%= STATUS_LABELS[r.status] %></span><% if (r.last_error) { %><br><span class="small muted"><%= r.last_error %></span><% } %></td>
+      <td class="actions">
+        <% if (r.status === 'pending' || r.status === 'failed') { %>
+          <form method="post" action="/hatirlatmalar/<%= r.id %>/gonder"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn sm" type="submit">SMS gönder</button></form>
+        <% } %>
+        <% if (r.status !== 'done' && r.status !== 'cancelled') { %>
+          <form method="post" action="/hatirlatmalar/<%= r.id %>/durum"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="status" value="done"><button class="btn sm secondary" type="submit">Tamamlandı</button></form>
+        <% } %>
+        <a class="btn sm secondary" href="/hatirlatmalar/<%= r.id %>/duzenle">Düzenle</a>
+      </td>
+    </tr>
+    <% } %>
+  </table>
+  <% } %>
+</div>
+
+<h2>SMS geçmişi</h2>
+<div class="card">
+  <% if (!smsList.length) { %><div class="empty">Bu kişiye henüz SMS gönderilmedi.</div><% } else { %>
+  <table>
+    <tr><th>Zaman</th><th>Mesaj</th><th>Durum</th></tr>
+    <% for (const s of smsList) { %>
+    <tr>
+      <td class="small"><%= formatDateTime(s.created_at) %></td>
+      <td class="small pre"><%= s.message %></td>
+      <td><span class="badge <%= s.status === 'sent' ? 'ok' : 'failed' %>"><%= s.status === 'sent' ? 'Gönderildi' : 'Hata' %></span><% if (s.error) { %><br><span class="small muted"><%= s.error %></span><% } %></td>
+    </tr>
+    <% } %>
+  </table>
+  <% } %>
+</div>
+<%- include('partials/footer') %>

@@ -1,0 +1,53 @@
+<%- include('partials/header') %>
+<h1>Özet</h1>
+<% if (settings.sms_provider === 'console') { %>
+  <div class="warnbox">SMS sağlayıcısı <strong>Konsol (test)</strong> modunda; gerçek SMS gönderilmiyor.
+  <% if (user.role === 'admin') { %><a href="/ayarlar">Ayarlar</a> sayfasından sağlayıcı bilgilerini girin.<% } %></div>
+<% } %>
+<div class="grid grid-3">
+  <div class="card stat"><div class="num"><%= counts.owners %></div><div class="lbl">Hasta sahibi</div></div>
+  <div class="card stat"><div class="num"><%= counts.pets %></div><div class="lbl">Hayvan</div></div>
+  <div class="card stat"><div class="num"><%= counts.pending %></div><div class="lbl">Bekleyen hatırlatma</div></div>
+  <div class="card stat"><div class="num"><%= counts.smsSent7 %></div><div class="lbl">Son 7 günde gönderilen SMS<% if (counts.smsFailed7) { %> <span class="badge failed"><%= counts.smsFailed7 %> hata</span><% } %></div></div>
+</div>
+
+<h2>Bugün SMS'i gönderilecekler (<%= due.length %>)</h2>
+<div class="card">
+  <p class="small muted">Zamanlayıcı <%= settings.send_hour_start %>:00 – <%= settings.send_hour_end %>:00 arasında otomatik gönderir. Beklemeden göndermek için "Şimdi gönder"i kullanabilirsiniz.</p>
+  <% if (!due.length) { %><div class="empty">Bugün gönderilecek hatırlatma yok.</div><% } else { %>
+  <table>
+    <tr><th>Sahip</th><th>Hayvan</th><th>Hatırlatma</th><th>Tarih</th><th>Durum</th><th></th></tr>
+    <% for (const r of due) { %>
+    <tr>
+      <td><a href="/sahipler/<%= r.owner_id %>"><%= r.owner_name %></a><br><span class="small muted mono"><%= formatPhone(r.owner_phone) %></span></td>
+      <td><%= r.pet_name %></td>
+      <td><%= r.title %></td>
+      <td><%= formatDate(r.due_date) %></td>
+      <td><% if (!r.sms_opt_in) { %><span class="badge cancelled">SMS istemiyor</span><% } else if (r.last_error) { %><span class="badge failed" title="<%= r.last_error %>">Hata (<%= r.attempts %>)</span><% } else { %><span class="badge pending">Bekliyor</span><% } %></td>
+      <td class="actions">
+        <form method="post" action="/hatirlatmalar/<%= r.id %>/gonder"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn sm" type="submit">Şimdi gönder</button></form>
+      </td>
+    </tr>
+    <% } %>
+  </table>
+  <% } %>
+</div>
+
+<h2>Önümüzdeki 7 gün</h2>
+<div class="card">
+  <% if (!upcoming.length) { %><div class="empty">Yaklaşan hatırlatma yok.</div><% } else { %>
+  <table>
+    <tr><th>Tarih</th><th>Sahip</th><th>Hayvan</th><th>Hatırlatma</th><th>Durum</th></tr>
+    <% for (const r of upcoming) { %>
+    <tr>
+      <td><%= formatDate(r.due_date) %></td>
+      <td><a href="/sahipler/<%= r.owner_id %>"><%= r.owner_name %></a></td>
+      <td><%= r.pet_name %></td>
+      <td><%= r.title %></td>
+      <td><span class="badge <%= r.status %>"><%= STATUS_LABELS[r.status] %></span></td>
+    </tr>
+    <% } %>
+  </table>
+  <% } %>
+</div>
+<%- include('partials/footer') %>

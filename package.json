@@ -1,0 +1,21 @@
+{
+  "name": "veteriner-sms",
+  "version": "1.0.0",
+  "description": "Veteriner klinikleri için çok kiracılı SMS hatırlatma uygulaması",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "create-admin": "node scripts/create-admin.js",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "ejs": "^3.1.10",
+    "express": "^5.1.0"
+  }
+}
