@@ -4,50 +4,60 @@
   <div class="warnbox">SMS sağlayıcısı <strong>Konsol (test)</strong> modunda; gerçek SMS gönderilmiyor.
   <% if (user.role === 'admin') { %><a href="/ayarlar">Ayarlar</a> sayfasından sağlayıcı bilgilerini girin.<% } %></div>
 <% } %>
+<% if (settings.scheduler_enabled !== '1') { %>
+  <div class="warnbox">Otomatik gönderim bu klinik için <strong>kapalı</strong>. Hatırlatmalar yalnızca elle gönderilir.</div>
+<% } %>
 <div class="grid grid-3">
   <div class="card stat"><div class="num"><%= counts.owners %></div><div class="lbl">Hasta sahibi</div></div>
   <div class="card stat"><div class="num"><%= counts.pets %></div><div class="lbl">Hayvan</div></div>
   <div class="card stat"><div class="num"><%= counts.pending %></div><div class="lbl">Bekleyen hatırlatma</div></div>
-  <div class="card stat"><div class="num"><%= counts.smsSent7 %></div><div class="lbl">Son 7 günde gönderilen SMS<% if (counts.smsFailed7) { %> <span class="badge failed"><%= counts.smsFailed7 %> hata</span><% } %></div></div>
+  <div class="card stat"><div class="num"><%= counts.smsSentMonth %></div><div class="lbl"><%= counts.monthLabel %> ayında gönderilen SMS<% if (counts.smsFailedMonth) { %> <span class="badge failed"><%= counts.smsFailedMonth %> hata</span><% } %><br><span class="small">Bugün: <%= counts.usedToday %> / <%= counts.capToday %></span></div></div>
 </div>
+
+<%
+  const rowsTable = (rows, showSend) => { %>
+  <table>
+    <tr><th>Tarih</th><th>Sahip</th><th>Hayvan</th><th>Hatırlatma</th><th>Durum</th><% if (showSend) { %><th></th><% } %></tr>
+    <% for (const r of rows) { %>
+    <tr>
+      <td><%= formatDate(r.due_date) %></td>
+      <td><a href="/sahipler/<%= r.owner_id %>"><%= r.owner_name %></a><br><span class="small muted mono"><%= formatPhone(r.owner_phone) %></span></td>
+      <td><%= r.pet_name %></td>
+      <td><%= r.title %></td>
+      <td><% if (!r.sms_opt_in) { %><span class="badge cancelled">SMS istemiyor</span><% } else if (r.last_error) { %><span class="badge failed" title="<%= r.last_error %>">Hata (<%= r.attempts %>)</span><% } else { %><span class="badge <%= r.status %>"><%= STATUS_LABELS[r.status] %></span><% } %></td>
+      <% if (showSend) { %>
+      <td class="actions">
+        <% if (r.sms_opt_in && (r.status === 'pending' || r.status === 'failed')) { %>
+        <form method="post" action="/hatirlatmalar/<%= r.id %>/gonder"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn sm" type="submit">Şimdi gönder</button></form>
+        <% } %>
+      </td>
+      <% } %>
+    </tr>
+    <% } %>
+  </table>
+<% }; %>
 
 <h2>Bugün SMS'i gönderilecekler (<%= due.length %>)</h2>
 <div class="card">
   <p class="small muted">Zamanlayıcı <%= settings.send_hour_start %>:00 – <%= settings.send_hour_end %>:00 arasında otomatik gönderir. Beklemeden göndermek için "Şimdi gönder"i kullanabilirsiniz.</p>
-  <% if (!due.length) { %><div class="empty">Bugün gönderilecek hatırlatma yok.</div><% } else { %>
-  <table>
-    <tr><th>Sahip</th><th>Hayvan</th><th>Hatırlatma</th><th>Tarih</th><th>Durum</th><th></th></tr>
-    <% for (const r of due) { %>
-    <tr>
-      <td><a href="/sahipler/<%= r.owner_id %>"><%= r.owner_name %></a><br><span class="small muted mono"><%= formatPhone(r.owner_phone) %></span></td>
-      <td><%= r.pet_name %></td>
-      <td><%= r.title %></td>
-      <td><%= formatDate(r.due_date) %></td>
-      <td><% if (!r.sms_opt_in) { %><span class="badge cancelled">SMS istemiyor</span><% } else if (r.last_error) { %><span class="badge failed" title="<%= r.last_error %>">Hata (<%= r.attempts %>)</span><% } else { %><span class="badge pending">Bekliyor</span><% } %></td>
-      <td class="actions">
-        <form method="post" action="/hatirlatmalar/<%= r.id %>/gonder"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn sm" type="submit">Şimdi gönder</button></form>
-      </td>
-    </tr>
-    <% } %>
-  </table>
-  <% } %>
+  <% if (!due.length) { %><div class="empty">Bugün gönderilecek hatırlatma yok.</div><% } else { rowsTable(due, true); } %>
 </div>
+
+<h2>Yarın gönderilecekler (<%= tomorrow.length %>)</h2>
+<div class="card">
+  <% if (!tomorrow.length) { %><div class="empty">Yarın için hatırlatma yok.</div><% } else { rowsTable(tomorrow, false); } %>
+</div>
+
+<% if (overdue.length) { %>
+<h2>Süresi geçmiş (<%= overdue.length %>)</h2>
+<div class="card">
+  <p class="small muted">Randevu tarihi 3 günden fazla geçmiş ve SMS gönderilmemiş. Otomatik gönderilmez; isterseniz elle gönderin, tamamlayın ya da iptal edin.</p>
+  <% rowsTable(overdue, true); %>
+</div>
+<% } %>
 
 <h2>Önümüzdeki 7 gün</h2>
 <div class="card">
-  <% if (!upcoming.length) { %><div class="empty">Yaklaşan hatırlatma yok.</div><% } else { %>
-  <table>
-    <tr><th>Tarih</th><th>Sahip</th><th>Hayvan</th><th>Hatırlatma</th><th>Durum</th></tr>
-    <% for (const r of upcoming) { %>
-    <tr>
-      <td><%= formatDate(r.due_date) %></td>
-      <td><a href="/sahipler/<%= r.owner_id %>"><%= r.owner_name %></a></td>
-      <td><%= r.pet_name %></td>
-      <td><%= r.title %></td>
-      <td><span class="badge <%= r.status %>"><%= STATUS_LABELS[r.status] %></span></td>
-    </tr>
-    <% } %>
-  </table>
-  <% } %>
+  <% if (!upcoming.length) { %><div class="empty">Yaklaşan hatırlatma yok.</div><% } else { rowsTable(upcoming, false); } %>
 </div>
 <%- include('partials/footer') %>

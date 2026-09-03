@@ -104,3 +104,25 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #99f6e4; border-c
   .topbar nav a, .topbar button.link { margin-left: 0; margin-right: 12px; }
   td.actions { white-space: normal; text-align: left; }
 }
+
+/* --- yardımcı sınıflar (CSP: inline style yok) --- */
+.mt0 { margin-top: 0; }
+.mt10 { margin-top: 10px; }
+.mt24 { margin-top: 24px; }
+.inline { display: inline; }
+.spacer { flex: 1; }
+.maxw220 { max-width: 220px; }
+.maxw260 { max-width: 260px; }
+.maxw480 { max-width: 480px; }
+.preview-box { background: #f9fafb; border: 1px solid var(--line); padding: 10px; border-radius: 6px; }
+.tempbox { background: #ecfdf5; border-color: #6ee7b7; }
+.big { font-size: 20px; letter-spacing: .06em; padding: 2px 8px; background: #fff; border: 1px solid var(--line); border-radius: 4px; }
+.provider-fields.hidden, .provider-help.hidden { display: none; }
+.hidden { display: none; }
+code { font-family: ui-monospace, Menlo, monospace; }
+.progress { font-size: 13px; color: var(--muted); }
+.import-table td, .import-table th { font-size: 13px; padding: 5px 6px; }
+.badge.new_owner { background: #dcfce7; color: var(--ok); }
+.badge.add_pet { background: #dbeafe; color: #1d4ed8; }
+.badge.skip_duplicate { background: #e5e7eb; color: #374151; }
+.badge.error { background: #fee2e2; color: var(--danger); }

@@ -1,33 +1,44 @@
+<%
+  const _user = (typeof user !== 'undefined') ? user : null;
+  const _path = (typeof currentPath === 'string') ? currentPath : '';
+  const _flash = (typeof flash === 'object' && flash) ? flash : { ok: '', err: '' };
+  const _csrf = (typeof csrf === 'string') ? csrf : '';
+  const _title = (typeof title === 'string') ? title : '';
+  const nav = (p, label, extra) => `<a href="${p}" class="${(_path === p || (extra && extra.some((x) => _path.startsWith(x)))) ? 'active' : ''}">${label}</a>`;
+%>
 <!doctype html>
 <html lang="tr">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title><%= title ? title + ' · ' : '' %>Veteriner SMS</title>
+  <title><%= _title ? _title + ' · ' : '' %>Veteriner SMS</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <header class="topbar">
-  <a class="brand" href="/">🐾 Veteriner SMS<% if (user && user.clinicName) { %> <span class="who">· <%= user.clinicName %></span><% } %></a>
+  <a class="brand" href="<%= _user && _user.role === 'superadmin' ? '/admin' : '/' %>">🐾 Veteriner SMS<% if (_user && _user.clinicName) { %> <span class="who">· <%= _user.clinicName %></span><% } %></a>
   <nav>
-    <% if (user && user.clinicId) { %>
-      <a href="/" class="<%= currentPath === '/' ? 'active' : '' %>">Özet</a>
-      <a href="/sahipler" class="<%= currentPath.startsWith('/sahipler') || currentPath.startsWith('/hayvanlar') ? 'active' : '' %>">Hasta Sahipleri</a>
-      <a href="/hatirlatmalar" class="<%= currentPath.startsWith('/hatirlatmalar') ? 'active' : '' %>">Hatırlatmalar</a>
-      <a href="/sms" class="<%= currentPath.startsWith('/sms') ? 'active' : '' %>">SMS Geçmişi</a>
-      <% if (user.role === 'admin') { %>
-        <a href="/ayarlar" class="<%= currentPath.startsWith('/ayarlar') ? 'active' : '' %>">Ayarlar</a>
-        <a href="/kullanicilar" class="<%= currentPath.startsWith('/kullanicilar') ? 'active' : '' %>">Kullanıcılar</a>
+    <% if (_user && _user.clinicId) { %>
+      <%- nav('/', 'Özet') %>
+      <%- nav('/hizli-kayit', 'Hızlı kayıt') %>
+      <%- nav('/sahipler', 'Hasta Sahipleri', ['/sahipler', '/hayvanlar']) %>
+      <%- nav('/hatirlatmalar', 'Hatırlatmalar', ['/hatirlatmalar']) %>
+      <%- nav('/sms', 'SMS Geçmişi', ['/sms']) %>
+      <% if (_user.role === 'admin') { %>
+        <%- nav('/iceaktar', 'İçe aktar', ['/iceaktar']) %>
+        <%- nav('/ayarlar', 'Ayarlar', ['/ayarlar']) %>
+        <%- nav('/kullanicilar', 'Kullanıcılar', ['/kullanicilar']) %>
       <% } %>
-    <% } else if (user && user.role === 'superadmin') { %>
-      <a href="/admin" class="active">Klinikler</a>
+    <% } else if (_user && _user.role === 'superadmin') { %>
+      <%- nav('/admin', 'Klinikler', ['/admin/klinik']) %>
+      <%- nav('/admin/denetim', 'Denetim') %>
     <% } %>
-    <% if (user) { %>
-      <a href="/sifre" class="<%= currentPath === '/sifre' ? 'active' : '' %>"><%= user.name %></a>
-      <form method="post" action="/cikis"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link" type="submit">Çıkış</button></form>
+    <% if (_user) { %>
+      <%- nav('/sifre', _user.name) %>
+      <form method="post" action="/cikis"><input type="hidden" name="_csrf" value="<%= _csrf %>"><button class="link" type="submit">Çıkış</button></form>
     <% } %>
   </nav>
 </header>
 <main>
-<% if (flash && flash.ok) { %><div class="flash ok"><%= flash.ok %></div><% } %>
-<% if (flash && flash.err) { %><div class="flash err"><%= flash.err %></div><% } %>
+<% if (_flash.ok) { %><div class="flash ok"><%= _flash.ok %></div><% } %>
+<% if (_flash.err) { %><div class="flash err"><%= _flash.err %></div><% } %>

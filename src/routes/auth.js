@@ -1,42 +1,53 @@
 import { Router } from 'express';
-import { users } from '../db/master.js';
+import { users, sessions } from '../db/master.js';
 import {
   verifyPassword, hashPassword, passwordProblem, createSession, destroySession,
-  isRateLimited, recordFailure, clearFailures, requireLogin,
+  issuePreToken, verifyPreToken, requireLogin, DUMMY_HASH,
 } from '../auth.js';
-import { sessions } from '../db/master.js';
-import { trim } from '../util.js';
+import { limiters, clientIp } from '../ratelimit.js';
+import { audit } from '../audit.js';
+import { trim, isValidEmail, safeLocalPath } from '../util.js';
 
 export const authRouter = Router();
 
-function safeNext(n) {
-  return typeof n === 'string' && n.startsWith('/') && !n.startsWith('//') ? n : '/';
+function renderLogin(res, { status = 200, error = null, email = '', next = '/' } = {}) {
+  const preToken = issuePreToken(res);
+  res.status(status).render('login', { title: 'Giriş', error, email, next, preToken });
 }
 
 authRouter.get('/giris', (req, res) => {
-  if (req.user) return res.redirect('/');
-  res.render('login', { title: 'Giriş', error: null, email: '', next: safeNext(req.query.next) });
+  if (req.user) return res.redirect(req.user.role === 'superadmin' ? '/admin' : '/');
+  renderLogin(res, { next: safeLocalPath(req.query.next) });
 });
 
 authRouter.post('/giris', async (req, res) => {
   const email = trim(req.body.email, 120).toLowerCase();
   const password = String(req.body.password || '');
-  const next = safeNext(req.body.next);
-  const keys = ['ip:' + req.ip, 'email:' + email];
+  const next = safeLocalPath(req.body.next);
+  const ip = clientIp(req);
+  const keys = ['ip:' + ip, 'email:' + email];
+  const fail = (msg, status = 401) => renderLogin(res, { status, error: msg, email, next });
 
-  const fail = (msg) => res.status(401).render('login', { title: 'Giriş', error: msg, email, next });
-
-  if (isRateLimited(...keys)) return fail('Çok fazla hatalı deneme. 15 dakika sonra tekrar deneyin.');
-
-  const u = users.byEmail(email);
-  // Kullanıcı yoksa da sabit süreli karşılaştırma yap (zamanlama sızıntısını azaltır)
-  const ok = u ? await verifyPassword(password, u.password_hash) : await verifyPassword(password, '$2a$12$abcdefghijklmnopqrstuuJ7GJGZ.7hEh0fDp1Yqk6XcJ8QO6dW5W');
-  if (!u || !ok || !u.active) {
-    recordFailure(...keys);
+  if (!verifyPreToken(req)) return fail('Form süresi dolmuş. Lütfen tekrar deneyin.', 403);
+  if (keys.some((k) => limiters.login.isLimited(k))) return fail('Çok fazla hatalı deneme. 15 dakika sonra tekrar deneyin.', 429);
+  if (!isValidEmail(email) || !password) {
+    keys.forEach((k) => limiters.login.hit(k));
     return fail('E-posta veya parola hatalı.');
   }
-  clearFailures(...keys);
+
+  const u = users.byEmail(email);
+  // Kullanıcı yoksa da bcrypt çalıştır (zamanlama farkını azaltır)
+  const ok = await verifyPassword(password, u ? u.password_hash : DUMMY_HASH);
+  if (!u || !ok || !u.active) {
+    keys.forEach((k) => limiters.login.hit(k));
+    audit(req, 'login.fail', { meta: { email } });
+    return fail('E-posta veya parola hatalı.');
+  }
+  keys.forEach((k) => limiters.login.reset(k));
   createSession(res, req, u.id);
+  req.user = { id: u.id, email: u.email, role: u.role, clinicId: u.clinic_id };
+  audit(req, 'login.ok', { clinicId: u.clinic_id });
+  if (u.must_change_password) return res.redirect('/sifre?err=' + encodeURIComponent('Geçici parolanızı değiştirin.'));
   res.redirect(u.role === 'superadmin' ? '/admin' : next);
 });
 
@@ -60,10 +71,12 @@ authRouter.post('/sifre', requireLogin, async (req, res) => {
   if (p1 !== p2) return err('Yeni parolalar eşleşmiyor.');
   const problem = passwordProblem(p1);
   if (problem) return err(problem);
+  if (p1 === current) return err('Yeni parola mevcut parolayla aynı olamaz.');
 
-  users.setPassword(u.id, await hashPassword(p1));
-  // Diğer cihazlardaki oturumları kapat, bu oturumu yenile
+  users.setPassword(u.id, await hashPassword(p1), 0);
   sessions.deleteForUser(u.id);
+  req.session = null;
   createSession(res, req, u.id);
-  res.redirect('/?ok=' + encodeURIComponent('Parolanız güncellendi.'));
+  audit(req, 'password.change', { entityType: 'user', entityId: u.id });
+  res.redirect((u.role === 'superadmin' ? '/admin' : '/') + '?ok=' + encodeURIComponent('Parolanız güncellendi.'));
 });

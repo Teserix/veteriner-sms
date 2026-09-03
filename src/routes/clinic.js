@@ -1,31 +1,37 @@
 import { Router } from 'express';
-import { requireClinic, requireRole } from '../auth.js';
+import { requireRole } from '../auth.js';
 import { openTenant, getSettings, setSetting, owners, pets, reminders, smsLog } from '../db/tenant.js';
-import { PROVIDERS, sendSms } from '../sms/index.js';
+import { PROVIDERS, providerOf, senderProblem } from '../sms/index.js';
+import { dispatch, dailyCap, usedToday } from '../sms/dispatch.js';
+import { limiters } from '../ratelimit.js';
 import { encrypt } from '../crypto.js';
-import { todayLocal, addDays, normalizePhone, trim, toInt, nowIso } from '../util.js';
+import { audit } from '../audit.js';
+import { todayLocal, addDays, normalizePhone, trim, toInt, monthRangeIso, withFlash } from '../util.js';
 
 /**
- * Klinik kapsamlı sayfalar: özet, SMS geçmişi, ayarlar.
- * tenantMiddleware her istekte yalnızca oturumdaki kullanıcının klinik veritabanını açar.
+ * clinicScope: giriş yapmış ve bir kliniğe bağlı kullanıcı için klinik veritabanını
+ * istek başına BİR kez açar. Süper yönetici /admin'e, anonim kullanıcı /giris'e yönlenir.
+ * Bu katmandan sonraki tüm router'lar req.db / req.settings'e güvenebilir.
  */
-export const clinicRouter = Router();
-
-export function tenantMiddleware(req, res, next) {
-  req.db = openTenant(req.user.clinicId);
-  req.settings = getSettings(req.db);
-  res.locals.settings = req.settings;
+export function clinicScope(req, res, next) {
+  if (!req.user) return res.redirect('/giris?next=' + encodeURIComponent(req.originalUrl.startsWith('/') ? req.originalUrl : '/'));
+  if (!req.user.clinicId) return res.redirect('/admin');
+  if (!req.db) {
+    req.db = openTenant(req.user.clinicId);
+    req.settings = getSettings(req.db);
+    res.locals.settings = { ...req.settings, sms_credentials: undefined };
+  }
   next();
 }
 
-clinicRouter.use(requireClinic, tenantMiddleware);
+export const clinicRouter = Router();
 
 /* ---------- Özet ---------- */
 clinicRouter.get('/', (req, res) => {
   const db = req.db;
   const today = todayLocal();
-  const weekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
-  const smsCounts = Object.fromEntries(smsLog.countSince(db, weekAgo).map((r) => [r.status, r.c]));
+  const month = monthRangeIso();
+  const smsMonth = smsLog.countBetween(db, month.from, month.to);
   const remCounts = Object.fromEntries(reminders.countByStatus(db).map((r) => [r.status, r.c]));
   res.render('dashboard', {
     title: 'Özet',
@@ -33,10 +39,15 @@ clinicRouter.get('/', (req, res) => {
       owners: owners.count(db),
       pets: pets.count(db),
       pending: remCounts.pending || 0,
-      smsSent7: smsCounts.sent || 0,
-      smsFailed7: smsCounts.failed || 0,
+      smsSentMonth: smsMonth.sent,
+      smsFailedMonth: smsMonth.failed,
+      monthLabel: month.label,
+      capToday: dailyCap(req.user.clinicId, req.settings),
+      usedToday: usedToday(db),
     },
     due: reminders.due(db, today),
+    tomorrow: reminders.dueOn(db, addDays(today, 1)),
+    overdue: reminders.overdue(db, today),
     upcoming: reminders.upcoming(db, addDays(today, 1), addDays(today, 7)),
   });
 });
@@ -52,25 +63,32 @@ clinicRouter.get('/ayarlar', requireRole('admin'), (req, res) => {
     title: 'Ayarlar',
     providers: PROVIDERS,
     hasCredentials: Boolean(req.settings.sms_credentials),
+    clinicCap: dailyCap(req.user.clinicId, { daily_sms_limit: '999999' }),
   });
 });
 
 clinicRouter.post('/ayarlar', requireRole('admin'), (req, res) => {
   const db = req.db;
   const b = req.body;
-  const providerName = PROVIDERS[b.sms_provider] ? b.sms_provider : 'console';
+  const providerName = providerOf(b.sms_provider);
   const start = Math.min(23, Math.max(0, toInt(b.send_hour_start, 9)));
   const end = Math.min(24, Math.max(start + 1, toInt(b.send_hour_end, 20)));
+  const sender = trim(b.sms_sender, 40);
+  const senderErr = senderProblem(providerName, sender);
+  if (senderErr) return res.redirect(withFlash('/ayarlar', 'err', senderErr));
+  const template = trim(b.template, 320);
+  if (!template) return res.redirect(withFlash('/ayarlar', 'err', 'Mesaj şablonu boş olamaz.'));
 
   setSetting(db, 'clinic_name', trim(b.clinic_name, 80));
   setSetting(db, 'clinic_phone', trim(b.clinic_phone, 30));
-  setSetting(db, 'template', trim(b.template, 600) || getSettings(db).template);
+  setSetting(db, 'template', template);
   setSetting(db, 'scheduler_enabled', b.scheduler_enabled === '1' ? '1' : '0');
   setSetting(db, 'send_hour_start', String(start));
   setSetting(db, 'send_hour_end', String(end));
-  setSetting(db, 'sms_sender', trim(b.sms_sender, 40));
+  setSetting(db, 'sms_sender', sender);
+  setSetting(db, 'daily_sms_limit', String(Math.min(5000, Math.max(0, toInt(b.daily_sms_limit, 200)))));
 
-  // Sağlayıcı kimlik bilgileri: form alanları doluysa şifreleyip kaydet, boşsa mevcut korunur.
+  // Sağlayıcı kimlik bilgileri: alanlar doluysa şifreleyip kaydet, boşsa mevcut korunur.
   const fields = PROVIDERS[providerName].fields;
   const creds = {};
   let anyFilled = false;
@@ -79,28 +97,23 @@ clinicRouter.post('/ayarlar', requireRole('admin'), (req, res) => {
     if (v) { creds[f.key] = v; anyFilled = true; }
   }
   const providerChanged = providerName !== req.settings.sms_provider;
-  setSetting(db, 'sms_provider', providerName);
-  if (anyFilled) {
-    if (fields.some((f) => !creds[f.key])) {
-      return res.redirect('/ayarlar?err=' + encodeURIComponent('Sağlayıcı hesap bilgilerinin tamamını doldurun.'));
-    }
-    setSetting(db, 'sms_credentials', encrypt(JSON.stringify(creds)));
-  } else if (providerChanged) {
-    setSetting(db, 'sms_credentials', '');
+  if (anyFilled && fields.some((f) => !creds[f.key])) {
+    return res.redirect(withFlash('/ayarlar', 'err', 'Sağlayıcı hesap bilgilerinin tamamını doldurun.'));
   }
-  res.redirect('/ayarlar?ok=' + encodeURIComponent('Ayarlar kaydedildi.'));
+  setSetting(db, 'sms_provider', providerName);
+  if (anyFilled) setSetting(db, 'sms_credentials', encrypt(JSON.stringify(creds)));
+  else if (providerChanged) setSetting(db, 'sms_credentials', '');
+
+  audit(req, 'settings.update', { meta: { provider: providerName, credentialsChanged: anyFilled } });
+  res.redirect(withFlash('/ayarlar', 'ok', 'Ayarlar kaydedildi.'));
 });
 
-clinicRouter.post('/ayarlar/test', requireRole('admin'), async (req, res) => {
+clinicRouter.post('/ayarlar/test', requireRole('admin'), limiters.testSms.middleware((req) => 'u:' + req.user.id, 'Saatte en fazla 5 test SMS gönderebilirsiniz.'), async (req, res) => {
   const phone = normalizePhone(req.body.phone);
-  if (!phone) return res.redirect('/ayarlar?err=' + encodeURIComponent('Geçersiz telefon numarası.'));
+  if (!phone) return res.redirect(withFlash('/ayarlar', 'err', 'Geçersiz telefon numarası.'));
   const settings = getSettings(req.db);
   const message = `Test mesajı - ${settings.clinic_name || 'Veteriner SMS'}`;
-  const r = await sendSms(settings, phone, message);
-  smsLog.add(req.db, {
-    phone, message, provider: r.providerName, status: r.ok ? 'sent' : 'failed',
-    provider_ref: r.ref, error: r.error, sent_by: req.user.email, created_at: nowIso(),
-  });
-  if (r.ok) return res.redirect('/ayarlar?ok=' + encodeURIComponent('Test SMS gönderildi (' + r.providerName + ').'));
-  res.redirect('/ayarlar?err=' + encodeURIComponent('Gönderilemedi: ' + r.error));
+  const r = await dispatch({ clinicId: req.user.clinicId, db: req.db, settings, kind: 'test', to: phone, message, sentBy: req.user.email });
+  if (r.ok) return res.redirect(withFlash('/ayarlar', 'ok', `Test SMS gönderildi (${r.providerName}).`));
+  res.redirect(withFlash('/ayarlar', 'err', 'Gönderilemedi: ' + r.error));
 });

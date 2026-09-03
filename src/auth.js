@@ -2,14 +2,22 @@ import bcrypt from 'bcryptjs';
 import { config } from './config.js';
 import { randomToken, sha256, safeEqual } from './crypto.js';
 import { sessions, users } from './db/master.js';
-import { nowIso } from './util.js';
+import { nowIso, safeLocalPath } from './util.js';
+import { clientIp } from './ratelimit.js';
 
-const COOKIE = 'vsid';
+export const SESSION_COOKIE = config.isProd ? '__Host-vsid' : 'vsid';
+export const PRE_COOKIE = 'vpre';
 const BCRYPT_ROUNDS = 12;
 
 /* ---------- Parola ---------- */
 export const hashPassword = (p) => bcrypt.hash(p, BCRYPT_ROUNDS);
 export const verifyPassword = (p, hash) => bcrypt.compare(p, hash);
+
+/** Bilinmeyen e-postada da bcrypt çalışsın diye açılışta üretilen sahte hash */
+export let DUMMY_HASH = null;
+export async function initAuth() {
+  DUMMY_HASH = await hashPassword(randomToken(16));
+}
 
 export function passwordProblem(p) {
   if (!p || p.length < 8) return 'Parola en az 8 karakter olmalı.';
@@ -18,45 +26,23 @@ export function passwordProblem(p) {
   return null;
 }
 
-/* ---------- Giriş denemesi sınırlama (IP + e-posta) ---------- */
-const WINDOW_MS = 15 * 60 * 1000;
-const MAX_ATTEMPTS = 8;
-const attempts = new Map(); // key -> { count, first }
-
-function bump(key) {
-  const now = Date.now();
-  const a = attempts.get(key);
-  if (!a || now - a.first > WINDOW_MS) {
-    attempts.set(key, { count: 1, first: now });
-    return 1;
+/** Rastgele, okunabilir geçici parola (harf+rakam, 12 karakter) */
+export function generatePassword() {
+  const alphabet = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let out = '';
+  const bytes = randomToken(24);
+  for (let i = 0; out.length < 12 && i < bytes.length; i++) {
+    const idx = bytes.charCodeAt(i) % alphabet.length;
+    out += alphabet[idx];
   }
-  a.count++;
-  return a.count;
+  // en az bir harf ve bir rakam garantisi
+  if (!/\d/.test(out)) out = out.slice(0, 11) + '7';
+  if (!/[a-zA-Z]/.test(out)) out = 'k' + out.slice(1);
+  return out;
 }
-
-export function isRateLimited(...keys) {
-  const now = Date.now();
-  return keys.some((k) => {
-    const a = attempts.get(k);
-    return a && now - a.first <= WINDOW_MS && a.count >= MAX_ATTEMPTS;
-  });
-}
-
-export function recordFailure(...keys) {
-  keys.forEach(bump);
-}
-
-export function clearFailures(...keys) {
-  keys.forEach((k) => attempts.delete(k));
-}
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, a] of attempts) if (now - a.first > WINDOW_MS) attempts.delete(k);
-}, 60 * 1000).unref();
 
 /* ---------- Çerez yardımcıları ---------- */
-function parseCookies(header) {
+export function parseCookies(header) {
   const out = {};
   if (!header) return out;
   for (const part of header.split(';')) {
@@ -64,29 +50,42 @@ function parseCookies(header) {
     if (i < 0) continue;
     const k = part.slice(0, i).trim();
     const v = part.slice(i + 1).trim();
-    if (k) out[k] = decodeURIComponent(v);
+    if (k) { try { out[k] = decodeURIComponent(v); } catch { out[k] = v; } }
   }
   return out;
 }
 
-function setSessionCookie(res, token) {
-  const parts = [
-    `${COOKIE}=${encodeURIComponent(token)}`,
-    'Path=/',
-    'HttpOnly',
-    'SameSite=Lax',
-    `Max-Age=${config.sessionTtlHours * 3600}`,
-  ];
+function cookieString(name, value, { maxAge, path = '/' }) {
+  const parts = [`${name}=${encodeURIComponent(value)}`, `Path=${path}`, 'HttpOnly', 'SameSite=Lax', `Max-Age=${maxAge}`];
   if (config.isProd) parts.push('Secure');
-  res.append('Set-Cookie', parts.join('; '));
+  return parts.join('; ');
+}
+
+function setSessionCookie(res, token) {
+  res.append('Set-Cookie', cookieString(SESSION_COOKIE, token, { maxAge: config.sessionTtlHours * 3600 }));
 }
 
 function clearSessionCookie(res) {
-  res.append('Set-Cookie', `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${config.isProd ? '; Secure' : ''}`);
+  res.append('Set-Cookie', cookieString(SESSION_COOKIE, '', { maxAge: 0 }));
+}
+
+/** Giriş formu için oturum öncesi CSRF belirteci (double-submit çerez) */
+export function issuePreToken(res) {
+  const token = randomToken(24);
+  res.append('Set-Cookie', cookieString(PRE_COOKIE, token, { maxAge: 15 * 60, path: '/giris' }));
+  return token;
+}
+
+export function verifyPreToken(req) {
+  const cookie = parseCookies(req.headers.cookie)[PRE_COOKIE];
+  const sent = req.body?._csrf;
+  return Boolean(cookie && sent && safeEqual(cookie, sent));
 }
 
 /* ---------- Oturum ---------- */
 export function createSession(res, req, userId) {
+  // Oturum rotasyonu: varsa eski oturum silinir
+  if (req.session?.session_id) sessions.delete(req.session.session_id);
   const token = randomToken(32);
   const now = new Date();
   const exp = new Date(now.getTime() + config.sessionTtlHours * 3600 * 1000);
@@ -96,7 +95,7 @@ export function createSession(res, req, userId) {
     csrf: randomToken(24),
     createdAt: now.toISOString(),
     expiresAt: exp.toISOString(),
-    ip: req.ip,
+    ip: clientIp(req),
     userAgent: String(req.headers['user-agent'] || '').slice(0, 200),
   });
   users.touchLogin(userId, now.toISOString());
@@ -106,13 +105,15 @@ export function createSession(res, req, userId) {
 export function destroySession(req, res) {
   if (req.session?.session_id) sessions.delete(req.session.session_id);
   clearSessionCookie(res);
+  req.session = null;
+  req.user = null;
 }
 
 /** Her istekte oturumu çözer; req.session ve req.user doldurulur */
 export function sessionMiddleware(req, res, next) {
   req.session = null;
   req.user = null;
-  const token = parseCookies(req.headers.cookie)[COOKIE];
+  const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
   if (token && token.length < 200) {
     const s = sessions.get(sha256(token));
     if (s) {
@@ -130,6 +131,7 @@ export function sessionMiddleware(req, res, next) {
           role: s.role,
           clinicId: s.clinic_id,
           clinicName: s.clinic_name,
+          mustChangePassword: Boolean(s.must_change_password),
         };
       }
     }
@@ -139,10 +141,36 @@ export function sessionMiddleware(req, res, next) {
   next();
 }
 
+/* ---------- CSRF / Origin ---------- */
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/** Origin (yoksa Referer) uygulamanın kendi origin'i değilse 403 */
+export function originCheck(req, res, next) {
+  if (SAFE_METHODS.has(req.method)) return next();
+  const expected = config.appOrigin || `${req.protocol}://${req.get('host')}`;
+  let origin = req.get('Origin');
+  if (!origin) {
+    const ref = req.get('Referer');
+    if (ref) { try { origin = new URL(ref).origin; } catch { origin = 'invalid'; } }
+  }
+  if (!origin) {
+    if (config.isProd) return res.status(403).render('error', { title: 'Güvenlik hatası', message: 'İsteğin kaynağı doğrulanamadı.' });
+    return next();
+  }
+  if (origin !== expected) {
+    return res.status(403).render('error', { title: 'Güvenlik hatası', message: 'İsteğin kaynağı doğrulanamadı.' });
+  }
+  next();
+}
+
 /** POST/PUT/DELETE isteklerinde CSRF belirtecini doğrular */
 export function csrfMiddleware(req, res, next) {
-  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-  if (!req.session) return next(); // giriş sayfası gibi oturumsuz formlar kendi koruması ile
+  if (SAFE_METHODS.has(req.method)) return next();
+  if (!req.session) {
+    // Oturumsuz form yalnızca giriş; kendi oturum-öncesi belirteciyle korunur
+    if (req.path === '/giris') return next();
+    return res.status(403).render('error', { title: 'Oturum bulunamadı', message: 'Oturumunuz sona ermiş. Lütfen yeniden giriş yapın.' });
+  }
   const sent = req.body?._csrf || req.headers['x-csrf-token'];
   if (!safeEqual(sent, req.session.csrf)) {
     return res.status(403).render('error', { title: 'Güvenlik hatası', message: 'Form belirteci geçersiz. Sayfayı yenileyip tekrar deneyin.' });
@@ -152,25 +180,29 @@ export function csrfMiddleware(req, res, next) {
 
 /* ---------- Yetki kontrolleri ---------- */
 export function requireLogin(req, res, next) {
-  if (!req.user) return res.redirect('/giris?next=' + encodeURIComponent(req.originalUrl));
+  if (!req.user) return res.redirect('/giris?next=' + encodeURIComponent(safeLocalPath(req.originalUrl)));
   next();
 }
 
 export function requireClinic(req, res, next) {
-  if (!req.user) return res.redirect('/giris');
-  if (!req.user.clinicId) {
-    // Süper yönetici klinik verisi görmez; yönetim paneline yönlendir
-    return res.redirect('/admin');
-  }
+  if (!req.user) return res.redirect('/giris?next=' + encodeURIComponent(safeLocalPath(req.originalUrl)));
+  if (!req.user.clinicId) return res.redirect('/admin');
   next();
 }
 
 export function requireRole(...roles) {
   return (req, res, next) => {
-    if (!req.user) return res.redirect('/giris');
+    if (!req.user) return res.redirect('/giris?next=' + encodeURIComponent(safeLocalPath(req.originalUrl)));
     if (!roles.includes(req.user.role)) {
       return res.status(403).render('error', { title: 'Yetkisiz', message: 'Bu sayfaya erişim yetkiniz yok.' });
     }
     next();
   };
+}
+
+/** Geçici parolayla giren kullanıcı önce parolasını değiştirmeli */
+export function mustChangePasswordGate(req, res, next) {
+  if (!req.user?.mustChangePassword) return next();
+  if (req.path === '/sifre' || req.path === '/cikis') return next();
+  return res.redirect('/sifre?err=' + encodeURIComponent('Devam etmeden önce geçici parolanızı değiştirin.'));
 }

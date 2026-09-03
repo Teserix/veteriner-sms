@@ -1,9 +1,8 @@
 import { config } from './config.js';
 
-/**
- * Türkiye cep telefonu numarasını 905XXXXXXXXX biçimine çevirir.
- * Geçersizse null döner.
- */
+/* ---------- Telefon ---------- */
+
+/** Türkiye cep telefonu numarasını 905XXXXXXXXX biçimine çevirir. Geçersizse null. */
 export function normalizePhone(input) {
   if (!input) return null;
   let d = String(input).replace(/\D/g, '');
@@ -20,6 +19,17 @@ export function formatPhone(p) {
   return `0${p.slice(2, 5)} ${p.slice(5, 8)} ${p.slice(8, 10)} ${p.slice(10, 12)}`;
 }
 
+/** Loglar için: 905321234567 -> 90532*****67 */
+export function maskPhone(p) {
+  const s = String(p || '');
+  if (s.length < 6) return '***';
+  return s.slice(0, 5) + '*'.repeat(Math.max(1, s.length - 7)) + s.slice(-2);
+}
+
+/* ---------- Tarih / saat (Europe/Istanbul, kalıcı UTC+3) ---------- */
+
+export const TZ_OFFSET = '+03:00';
+
 const dtf = new Intl.DateTimeFormat('sv-SE', {
   timeZone: config.timeZone,
   year: 'numeric', month: '2-digit', day: '2-digit',
@@ -27,18 +37,34 @@ const dtf = new Intl.DateTimeFormat('sv-SE', {
   hour12: false,
 });
 
-/** İstanbul saatine göre { date: 'YYYY-MM-DD', hour: 0-23, time: 'HH:MM' } */
-export function nowLocal() {
-  const parts = Object.fromEntries(dtf.formatToParts(new Date()).map((p) => [p.type, p.value]));
-  return {
-    date: `${parts.year}-${parts.month}-${parts.day}`,
-    hour: Number(parts.hour === '24' ? 0 : parts.hour),
-    time: `${parts.hour}:${parts.minute}`,
-  };
+function partsOf(d) {
+  return Object.fromEntries(dtf.formatToParts(d).map((p) => [p.type, p.value]));
 }
 
-export function todayLocal() {
-  return nowLocal().date;
+/** İstanbul saatine göre { date: 'YYYY-MM-DD', hour: 0-23 } */
+export function nowLocal(now = new Date()) {
+  const p = partsOf(now);
+  return { date: `${p.year}-${p.month}-${p.day}`, hour: Number(p.hour === '24' ? 0 : p.hour) };
+}
+
+export function todayLocal(now = new Date()) {
+  return nowLocal(now).date;
+}
+
+/** Yerel günün başlangıcı (İstanbul 00:00) ISO/UTC olarak */
+export function localDayStartIso(date) {
+  return new Date(`${date}T00:00:00${TZ_OFFSET}`).toISOString();
+}
+
+/** İçinde bulunulan yerel ayın [başlangıç, bitiş) ISO aralığı */
+export function monthRangeIso(now = new Date()) {
+  const { date } = nowLocal(now);
+  const [y, m] = date.split('-').map(Number);
+  const start = `${y}-${String(m).padStart(2, '0')}-01`;
+  const ny = m === 12 ? y + 1 : y;
+  const nm = m === 12 ? 1 : m + 1;
+  const end = `${ny}-${String(nm).padStart(2, '0')}-01`;
+  return { from: localDayStartIso(start), to: localDayStartIso(end), label: `${String(m).padStart(2, '0')}.${y}` };
 }
 
 /** ISO tarih (YYYY-MM-DD) -> DD.MM.YYYY */
@@ -53,14 +79,24 @@ export function formatDateTime(iso) {
   if (!iso) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  const parts = Object.fromEntries(dtf.formatToParts(d).map((p) => [p.type, p.value]));
-  return `${parts.day}.${parts.month}.${parts.year} ${parts.hour}:${parts.minute}`;
+  const p = partsOf(d);
+  return `${p.day}.${p.month}.${p.year} ${p.hour}:${p.minute}`;
 }
 
 export function isValidDate(s) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s || '')) return false;
   const d = new Date(s + 'T00:00:00Z');
   return !Number.isNaN(d.getTime()) && d.toISOString().startsWith(s);
+}
+
+/** dd.mm.yyyy | dd/mm/yyyy | yyyy-mm-dd -> yyyy-mm-dd (geçersizse null) */
+export function parseDateFlexible(s) {
+  const t = String(s || '').trim();
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(t);
+  if (m) { const iso = `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`; return isValidDate(iso) ? iso : null; }
+  m = /^(\d{1,2})[./](\d{1,2})[./](\d{4})/.exec(t);
+  if (m) { const iso = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`; return isValidDate(iso) ? iso : null; }
+  return null;
 }
 
 /** ISO tarihe gün ekler */
@@ -74,6 +110,8 @@ export function nowIso() {
   return new Date().toISOString();
 }
 
+/* ---------- Girdi yardımcıları ---------- */
+
 export function trim(s, max = 500) {
   return String(s ?? '').trim().slice(0, max);
 }
@@ -82,6 +120,56 @@ export function toInt(v, def = null) {
   const n = Number.parseInt(v, 10);
   return Number.isFinite(n) ? n : def;
 }
+
+export function isValidEmail(s) {
+  return /^[^\s@]{1,64}@[^\s@]+\.[^\s@]{2,}$/.test(String(s || ''));
+}
+
+/** LIKE deseni için % _ \ karakterlerini kaçışlar (ESCAPE '\' ile kullanılır) */
+export function escapeLike(s) {
+  return String(s || '').replace(/[\\%_]/g, (c) => '\\' + c);
+}
+
+/* ---------- Yönlendirme ---------- */
+
+function allowedHosts(req) {
+  const hosts = new Set();
+  const h = req.get('host');
+  if (h) hosts.add(h);
+  if (config.appOrigin) { try { hosts.add(new URL(config.appOrigin).host); } catch { /* yoksay */ } }
+  return hosts;
+}
+
+/** Referer aynı origin ise yol+sorgu döner; değilse fallback. Açık yönlendirmeyi engeller. */
+export function returnTo(req, fallback) {
+  const ref = req.get('Referer');
+  if (!ref) return fallback;
+  try {
+    const u = new URL(ref);
+    if (!allowedHosts(req).has(u.host)) return fallback;
+    return u.pathname + u.search;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Kullanıcı girdisinden gelen "next" yolunu yalnızca yerel yol ise kabul eder */
+export function safeLocalPath(input, fallback = '/') {
+  const s = String(input || '');
+  if (!s.startsWith('/') || s.startsWith('//') || s.startsWith('/\\') || /[\r\n]/.test(s)) return fallback;
+  return s;
+}
+
+/** URL'ye tek bir flash parametresi ekler (eski ok/err silinir) */
+export function withFlash(url, kind, msg) {
+  const u = new URL(url, 'http://local');
+  u.searchParams.delete('ok');
+  u.searchParams.delete('err');
+  u.searchParams.set(kind, String(msg || '').slice(0, 300));
+  return u.pathname + u.search;
+}
+
+/* ---------- Sabitler ---------- */
 
 export const REMINDER_TYPES = {
   asi: 'Aşı',

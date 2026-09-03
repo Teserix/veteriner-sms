@@ -1,11 +1,10 @@
 import { Router } from 'express';
-import { requireClinic } from '../auth.js';
-import { tenantMiddleware } from './clinic.js';
+import { requireRole } from '../auth.js';
 import { owners, pets, reminders, smsLog } from '../db/tenant.js';
-import { normalizePhone, trim, toInt, nowIso, isValidDate, SPECIES } from '../util.js';
+import { audit } from '../audit.js';
+import { normalizePhone, formatPhone, trim, toInt, nowIso, isValidDate, isValidEmail, escapeLike, SPECIES } from '../util.js';
 
 export const ownersRouter = Router();
-ownersRouter.use(requireClinic, tenantMiddleware);
 
 function notFound(res) {
   return res.status(404).render('error', { title: 'Bulunamadı', message: 'Kayıt bulunamadı.' });
@@ -21,10 +20,38 @@ function ownerFromBody(b) {
   };
 }
 
+function ownerProblem(f, phone) {
+  if (!f.name) return 'Ad zorunlu.';
+  if (!phone) return 'Geçerli bir cep telefonu girin (05xx xxx xx xx).';
+  if (f.email && !isValidEmail(f.email)) return 'E-posta adresi geçersiz.';
+  return null;
+}
+
+/* ---------- CSV dışa aktarma (yalnızca yönetici) ---------- */
+function csvCell(v) {
+  let s = v == null ? '' : String(v);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; // formül enjeksiyonuna karşı
+  if (/[";\n\r]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+ownersRouter.get('/sahipler/disa-aktar.csv', requireRole('admin'), (req, res) => {
+  const rows = pets.allWithOwner(req.db);
+  const header = ['Sahip', 'Telefon', 'E-posta', 'SMS', 'Hayvan', 'Tür', 'Irk', 'Cinsiyet', 'Doğum'];
+  const lines = [header.join(';')];
+  for (const r of rows) {
+    lines.push([r.owner_name, formatPhone(r.owner_phone), r.owner_email, r.sms_opt_in ? 'Evet' : 'Hayır', r.name, r.species, r.breed, r.sex, r.birth_date].map(csvCell).join(';'));
+  }
+  audit(req, 'export.csv', { meta: { rows: rows.length } });
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="hasta-listesi.csv"');
+  res.send('﻿' + lines.join('\r\n'));
+});
+
 /* ---------- Sahipler ---------- */
 ownersRouter.get('/sahipler', (req, res) => {
   const q = trim(req.query.q, 60);
-  res.render('owners', { title: 'Hasta Sahipleri', list: owners.list(req.db, q), q });
+  res.render('owners', { title: 'Hasta Sahipleri', list: owners.list(req.db, q, escapeLike), q });
 });
 
 ownersRouter.get('/sahipler/yeni', (req, res) => {
@@ -35,8 +62,10 @@ ownersRouter.post('/sahipler/yeni', (req, res) => {
   const f = ownerFromBody(req.body);
   const phone = normalizePhone(f.phoneRaw);
   const form = { ...f, phone: f.phoneRaw };
-  if (!f.name) return res.status(400).render('owner_form', { title: 'Yeni hasta sahibi', owner: null, form, error: 'Ad zorunlu.' });
-  if (!phone) return res.status(400).render('owner_form', { title: 'Yeni hasta sahibi', owner: null, form, error: 'Geçerli bir cep telefonu girin (05xx xxx xx xx).' });
+  const problem = ownerProblem(f, phone);
+  if (problem) return res.status(400).render('owner_form', { title: 'Yeni hasta sahibi', owner: null, form, error: problem });
+  const existing = owners.byPhone(req.db, phone);
+  if (existing) return res.status(400).render('owner_form', { title: 'Yeni hasta sahibi', owner: null, form, error: `Bu telefon zaten kayıtlı: ${existing.name}.` });
   const id = owners.create(req.db, { ...f, phone, created_at: nowIso() });
   res.redirect(`/sahipler/${id}?ok=` + encodeURIComponent('Hasta sahibi eklendi. Şimdi hayvan ekleyebilirsiniz.'));
 });
@@ -57,7 +86,7 @@ ownersRouter.get('/sahipler/:id', (req, res) => {
 ownersRouter.get('/sahipler/:id/duzenle', (req, res) => {
   const owner = owners.get(req.db, toInt(req.params.id));
   if (!owner) return notFound(res);
-  res.render('owner_form', { title: 'Düzenle', owner, form: owner, error: null });
+  res.render('owner_form', { title: 'Düzenle', owner, form: { ...owner, phone: formatPhone(owner.phone) }, error: null });
 });
 
 ownersRouter.post('/sahipler/:id/duzenle', (req, res) => {
@@ -66,16 +95,19 @@ ownersRouter.post('/sahipler/:id/duzenle', (req, res) => {
   const f = ownerFromBody(req.body);
   const phone = normalizePhone(f.phoneRaw);
   const form = { ...f, phone: f.phoneRaw };
-  if (!f.name) return res.status(400).render('owner_form', { title: 'Düzenle', owner, form, error: 'Ad zorunlu.' });
-  if (!phone) return res.status(400).render('owner_form', { title: 'Düzenle', owner, form, error: 'Geçerli bir cep telefonu girin.' });
+  const problem = ownerProblem(f, phone);
+  if (problem) return res.status(400).render('owner_form', { title: 'Düzenle', owner, form, error: problem });
+  const other = owners.byPhone(req.db, phone);
+  if (other && other.id !== owner.id) return res.status(400).render('owner_form', { title: 'Düzenle', owner, form, error: `Bu telefon başka bir kayıtta: ${other.name}.` });
   owners.update(req.db, owner.id, { ...f, phone });
   res.redirect(`/sahipler/${owner.id}?ok=` + encodeURIComponent('Kaydedildi.'));
 });
 
-ownersRouter.post('/sahipler/:id/sil', (req, res) => {
+ownersRouter.post('/sahipler/:id/sil', requireRole('admin'), (req, res) => {
   const owner = owners.get(req.db, toInt(req.params.id));
   if (!owner) return notFound(res);
   owners.delete(req.db, owner.id);
+  audit(req, 'owner.delete', { entityType: 'owner', entityId: owner.id });
   res.redirect('/sahipler?ok=' + encodeURIComponent('Hasta sahibi silindi.'));
 });
 
@@ -126,9 +158,10 @@ ownersRouter.post('/hayvanlar/:id/duzenle', (req, res) => {
   res.redirect(`/sahipler/${pet.owner_id}?ok=` + encodeURIComponent('Kaydedildi.'));
 });
 
-ownersRouter.post('/hayvanlar/:id/sil', (req, res) => {
+ownersRouter.post('/hayvanlar/:id/sil', requireRole('admin'), (req, res) => {
   const pet = pets.get(req.db, toInt(req.params.id));
   if (!pet) return notFound(res);
   pets.delete(req.db, pet.id);
+  audit(req, 'pet.delete', { entityType: 'pet', entityId: pet.id });
   res.redirect(`/sahipler/${pet.owner_id}?ok=` + encodeURIComponent('Hayvan silindi.'));
 });

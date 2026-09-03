@@ -3,9 +3,11 @@
   <h1><%= owner.name %></h1>
   <div class="row">
     <a class="btn secondary" href="/sahipler/<%= owner.id %>/duzenle">Düzenle</a>
+    <% if (user.role === 'admin') { %>
     <form method="post" action="/sahipler/<%= owner.id %>/sil" data-confirm="Bu hasta sahibi, tüm hayvanları ve hatırlatmaları silinecek. Emin misiniz?">
       <input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn danger" type="submit">Sil</button>
     </form>
+    <% } %>
   </div>
 </div>
 <div class="card">
@@ -13,6 +15,7 @@
     <div><strong>Telefon:</strong> <span class="mono"><%= formatPhone(owner.phone) %></span></div>
     <% if (owner.email) { %><div><strong>E-posta:</strong> <%= owner.email %></div><% } %>
     <div><strong>SMS:</strong> <% if (owner.sms_opt_in) { %><span class="badge ok">Açık</span><% } else { %><span class="badge cancelled">Kapalı</span><% } %></div>
+    <% if (owner.import_batch) { %><div class="small muted">içe aktarıldı</div><% } %>
   </div>
   <% if (owner.notes) { %><p class="pre small"><%= owner.notes %></p><% } %>
 </div>
@@ -31,7 +34,9 @@
       <td class="actions">
         <a class="btn sm" href="/hayvanlar/<%= p.id %>/hatirlatma/yeni">+ Hatırlatma</a>
         <a class="btn sm secondary" href="/hayvanlar/<%= p.id %>/duzenle">Düzenle</a>
+        <% if (user.role === 'admin') { %>
         <form method="post" action="/hayvanlar/<%= p.id %>/sil" data-confirm="Hayvan ve hatırlatmaları silinecek. Emin misiniz?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn sm danger" type="submit">Sil</button></form>
+        <% } %>
       </td>
     </tr>
     <% } %>
@@ -52,7 +57,7 @@
       <td class="small"><%= r.notify_days_before %> gün önce<% if (r.sent_at) { %><br><span class="muted">gönderildi: <%= formatDateTime(r.sent_at) %></span><% } %></td>
       <td><span class="badge <%= r.status %>"><%= STATUS_LABELS[r.status] %></span><% if (r.last_error) { %><br><span class="small muted"><%= r.last_error %></span><% } %></td>
       <td class="actions">
-        <% if (r.status === 'pending' || r.status === 'failed') { %>
+        <% if ((r.status === 'pending' || r.status === 'failed') && owner.sms_opt_in) { %>
           <form method="post" action="/hatirlatmalar/<%= r.id %>/gonder"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn sm" type="submit">SMS gönder</button></form>
         <% } %>
         <% if (r.status !== 'done' && r.status !== 'cancelled') { %>

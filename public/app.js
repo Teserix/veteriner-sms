@@ -1,4 +1,4 @@
-// Küçük yardımcılar: onay isteyen formlar ve şablon önizleme
+// Küçük yardımcılar: onay isteyen formlar, şablon önizleme, sağlayıcı alanları
 document.addEventListener('submit', function (e) {
   var f = e.target;
   if (f && f.dataset && f.dataset.confirm) {
@@ -22,4 +22,17 @@ document.addEventListener('submit', function (e) {
   }
   ta.addEventListener('input', render);
   render();
+})();
+
+(function () {
+  var sel = document.getElementById('sms_provider');
+  if (!sel) return;
+  function update() {
+    var v = sel.value;
+    document.querySelectorAll('.provider-fields, .provider-help').forEach(function (el) {
+      el.classList.toggle('hidden', el.dataset.provider !== v);
+    });
+  }
+  sel.addEventListener('change', update);
+  update();
 })();

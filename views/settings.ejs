@@ -3,7 +3,7 @@
 <form method="post" action="/ayarlar">
   <input type="hidden" name="_csrf" value="<%= csrf %>">
   <div class="card">
-    <h2 style="margin-top:0">Klinik bilgileri</h2>
+    <h2 class="mt0">Klinik bilgileri</h2>
     <div class="form-grid">
       <div><label for="clinic_name">Klinik adı</label><input id="clinic_name" type="text" name="clinic_name" maxlength="80" value="<%= settings.clinic_name %>"></div>
       <div><label for="clinic_phone">Klinik telefonu</label><input id="clinic_phone" type="text" name="clinic_phone" maxlength="30" value="<%= settings.clinic_phone %>"></div>
@@ -11,54 +11,58 @@
   </div>
 
   <div class="card">
-    <h2 style="margin-top:0">SMS şablonu</h2>
+    <h2 class="mt0">SMS şablonu</h2>
     <label for="template">Mesaj metni</label>
-    <textarea id="template" name="template" maxlength="600" rows="4"><%= settings.template %></textarea>
-    <div class="help">Kullanılabilir alanlar: {sahip} {hayvan} {tarih} {tur} {klinik} {klinik_tel}. Türkçe karakter kullanılırsa SMS uzunluğu 70 karakterle sınırlıdır; uzun mesaj birden çok SMS olarak ücretlendirilebilir.</div>
+    <textarea id="template" name="template" maxlength="320" rows="4"><%= settings.template %></textarea>
+    <div class="help">Kullanılabilir alanlar: {sahip} {hayvan} {tarih} {tur} {klinik} {klinik_tel}. Türkçe karakter kullanılırsa tek SMS 70 karakterdir; uzun mesaj birden çok SMS olarak ücretlendirilir.</div>
     <label>Önizleme <span id="template-len" class="muted small"></span></label>
-    <div id="template-preview" class="pre small" style="background:#f9fafb;border:1px solid var(--line);padding:10px;border-radius:6px" data-clinic="<%= settings.clinic_name %>" data-phone="<%= settings.clinic_phone %>"></div>
+    <div id="template-preview" class="pre small preview-box" data-clinic="<%= settings.clinic_name %>" data-phone="<%= settings.clinic_phone %>"></div>
   </div>
 
   <div class="card">
-    <h2 style="margin-top:0">Otomatik gönderim</h2>
+    <h2 class="mt0">Otomatik gönderim</h2>
     <label class="checkbox"><input type="checkbox" name="scheduler_enabled" value="1" <%= settings.scheduler_enabled === '1' ? 'checked' : '' %>> Zamanlayıcı açık (hatırlatmalar otomatik gönderilsin)</label>
     <div class="form-grid">
       <div><label for="send_hour_start">Gönderim başlangıç saati</label><input id="send_hour_start" type="number" name="send_hour_start" min="0" max="23" value="<%= settings.send_hour_start %>"></div>
       <div><label for="send_hour_end">Gönderim bitiş saati</label><input id="send_hour_end" type="number" name="send_hour_end" min="1" max="24" value="<%= settings.send_hour_end %>"></div>
+      <div><label for="daily_sms_limit">Günlük SMS sınırı</label><input id="daily_sms_limit" type="number" name="daily_sms_limit" min="0" max="5000" value="<%= settings.daily_sms_limit %>">
+        <div class="help">Beklenmedik harcamaya karşı emniyet. Sistem tavanı: <%= clinicCap %>. Sınıra ulaşınca kalan gönderimler ertesi güne kalır.</div></div>
     </div>
     <div class="help">Türkiye saatine göre. Bu aralık dışında SMS gönderilmez, bir sonraki uygun saatte gönderilir.</div>
   </div>
 
   <div class="card">
-    <h2 style="margin-top:0">SMS sağlayıcısı</h2>
+    <h2 class="mt0">SMS sağlayıcısı</h2>
     <label for="sms_provider">Sağlayıcı</label>
     <select id="sms_provider" name="sms_provider">
       <% for (const [k, p] of Object.entries(providers)) { %><option value="<%= k %>" <%= settings.sms_provider === k ? 'selected' : '' %>><%= p.label %></option><% } %>
     </select>
     <label for="sms_sender">Gönderici başlığı / numarası</label>
     <input id="sms_sender" type="text" name="sms_sender" maxlength="40" value="<%= settings.sms_sender %>">
-    <div class="help">Netgsm için onaylı mesaj başlığı (örn. KLINIKADI), Twilio için +90… biçiminde "From" numarası.</div>
+    <% for (const [k, p] of Object.entries(providers)) { %><div class="help provider-help" data-provider="<%= k %>"><%= p.senderHelp %></div><% } %>
 
     <% for (const [k, p] of Object.entries(providers)) { if (!p.fields.length) continue; %>
+      <div class="provider-fields" data-provider="<%= k %>">
       <h2><%= p.label %> hesap bilgileri <% if (hasCredentials && settings.sms_provider === k) { %><span class="badge ok">kayıtlı</span><% } %></h2>
       <% for (const f of p.fields) { %>
         <label for="cred_<%= k %>_<%= f.key %>"><%= f.label %></label>
         <input id="cred_<%= k %>_<%= f.key %>" type="<%= f.type %>" name="cred_<%= k %>_<%= f.key %>" autocomplete="off" placeholder="<%= hasCredentials && settings.sms_provider === k ? '(değiştirmek için yazın)' : '' %>">
       <% } %>
+      </div>
     <% } %>
-    <div class="help" style="margin-top:10px">Hesap bilgileri sunucuda şifreli saklanır ve bir daha ekranda gösterilmez. Boş bırakırsanız mevcut kayıt korunur.</div>
+    <div class="help mt10">Hesap bilgileri sunucuda şifreli saklanır ve bir daha ekranda gösterilmez. Boş bırakırsanız mevcut kayıt korunur. Başlık onayı sağlayıcı panelinden alınır ve birkaç gün sürebilir.</div>
   </div>
 
   <div class="form-actions"><button class="btn" type="submit">Kaydet</button></div>
 </form>
 
-<div class="card" style="margin-top:24px">
-  <h2 style="margin-top:0">Test SMS gönder</h2>
+<div class="card mt24">
+  <h2 class="mt0">Test SMS gönder</h2>
   <form method="post" action="/ayarlar/test" class="row">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
-    <input type="tel" name="phone" placeholder="05xx xxx xx xx" required style="max-width:220px">
+    <input type="tel" name="phone" placeholder="05xx xxx xx xx" required class="maxw220">
     <button class="btn secondary" type="submit">Test gönder</button>
   </form>
-  <div class="help">Kayıtlı sağlayıcı ile "Test mesajı" gönderir; sonuç SMS geçmişine yazılır.</div>
+  <div class="help">Kayıtlı sağlayıcı ile "Test mesajı" gönderir; sonuç SMS geçmişine yazılır. Saatte en fazla 5 test.</div>
 </div>
 <%- include('partials/footer') %>

@@ -4,7 +4,8 @@
   <div class="card">
     <% if (error) { %><div class="flash err"><%= error %></div><% } %>
     <form method="post" action="/giris">
-      <input type="hidden" name="next" value="<%= next || '' %>">
+      <input type="hidden" name="_csrf" value="<%= preToken %>">
+      <input type="hidden" name="next" value="<%= next || '/' %>">
       <label for="email">E-posta</label>
       <input id="email" type="email" name="email" required autocomplete="username" autofocus value="<%= email || '' %>">
       <label for="password">Parola</label>

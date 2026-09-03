@@ -1,0 +1,21 @@
+<%- include('partials/header') %>
+<h1>Denetim günlüğü</h1>
+<div class="card">
+  <% if (!list.length) { %><div class="empty">Kayıt yok.</div><% } else { %>
+  <table>
+    <tr><th>Zaman</th><th>Kim</th><th>Klinik</th><th>İşlem</th><th>Nesne</th><th>IP</th><th>Ek</th></tr>
+    <% for (const a of list) { %>
+    <tr>
+      <td class="small"><%= formatDateTime(a.created_at) %></td>
+      <td class="small"><%= a.actor_email || '—' %><br><span class="muted"><%= a.actor_role || '' %></span></td>
+      <td class="small"><%= a.clinic_id ? (clinicMap[a.clinic_id] || a.clinic_id) : '—' %></td>
+      <td class="mono small"><%= a.action %></td>
+      <td class="small"><%= a.entity_type ? a.entity_type + ' #' + a.entity_id : '' %></td>
+      <td class="small mono"><%= a.ip || '' %></td>
+      <td class="small mono"><%= a.meta || '' %></td>
+    </tr>
+    <% } %>
+  </table>
+  <% } %>
+</div>
+<%- include('partials/footer') %>

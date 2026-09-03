@@ -25,14 +25,20 @@
     <div class="form-actions">
       <button class="btn" type="submit">Kaydet</button>
       <a class="btn secondary" href="/sahipler/<%= pet.owner_id %>">Vazgeç</a>
-      <% if (reminder) { %>
-      <span style="flex:1"></span>
-      <% if (reminder.status !== 'cancelled') { %>
-      <form method="post" action="/hatirlatmalar/<%= reminder.id %>/durum" style="display:inline"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="status" value="cancelled"><button class="btn secondary" type="submit">İptal et</button></form>
-      <% } %>
-      <form method="post" action="/hatirlatmalar/<%= reminder.id %>/sil" style="display:inline" data-confirm="Hatırlatma silinsin mi?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn danger" type="submit">Sil</button></form>
-      <% } %>
     </div>
   </form>
+  <% if (reminder) { %>
+  <div class="form-actions">
+    <% if (reminder.status !== 'cancelled') { %>
+    <form method="post" action="/hatirlatmalar/<%= reminder.id %>/durum" class="inline"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="status" value="cancelled"><button class="btn secondary" type="submit">İptal et</button></form>
+    <% } %>
+    <% if (reminder.status === 'cancelled' || reminder.status === 'done') { %>
+    <form method="post" action="/hatirlatmalar/<%= reminder.id %>/durum" class="inline"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="status" value="pending"><button class="btn secondary" type="submit">Yeniden aç</button></form>
+    <% } %>
+    <% if (user.role === 'admin') { %>
+    <form method="post" action="/hatirlatmalar/<%= reminder.id %>/sil" class="inline" data-confirm="Hatırlatma silinsin mi?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn danger" type="submit">Sil</button></form>
+    <% } %>
+  </div>
+  <% } %>
 </div>
 <%- include('partials/footer') %>
