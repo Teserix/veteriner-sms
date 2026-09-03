@@ -1,0 +1,51 @@
+# Veteriner SMS - Dokploy / Cloudflare Tunnel dağıtımı
+#
+# - Servis dışarıya port AÇMAZ (expose). Cloudflared aynı Docker ağında olduğu için
+#   tünel ingress hedefi:  http://veteriner-sms:3000
+# - teserix_network dışarıdan (external) oluşturulmuş olmalı:
+#     docker network create teserix_network
+# - Yalnızca TEK kopya çalıştırın. Zamanlayıcı (ENABLE_SCHEDULER=1) ve SQLite dosyaları
+#   ikinci bir kopyada çift SMS gönderimi ve dosya kilidi sorunlarına yol açar.
+#   Bu servisi asla yatay ölçeklemeyin (replicas > 1 yok).
+# - APP_SECRET, APP_ORIGIN, ADMIN_EMAIL, ADMIN_PASSWORD değerleri Dokploy panelindeki
+#   Environment sekmesinden verilir; burada ${VAR} olarak geçirilir.
+# - Veriler veteriner_sms_data adlı volume'da (/app/data) kalır; yedekler de oradadır.
+
+services:
+  veteriner-sms:
+    container_name: veteriner-sms
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    expose:
+      - "3000"
+    stop_grace_period: 15s
+    environment:
+      - NODE_ENV=production
+      - TRUST_PROXY=1
+      - ENABLE_SCHEDULER=1
+      - DATA_DIR=/app/data
+      - PORT=3000
+      - BACKUP_HOUR=3
+      - BACKUP_RETENTION_DAYS=14
+      - APP_SECRET=${APP_SECRET}
+      - APP_ORIGIN=${APP_ORIGIN}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+    volumes:
+      - veteriner_sms_data:/app/data
+    networks:
+      - teserix_network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  veteriner_sms_data:
+
+networks:
+  teserix_network:
+    external: true

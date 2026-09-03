@@ -12,7 +12,7 @@
     "dev": "node --watch src/server.js",
     "create-admin": "node scripts/create-admin.js",
     "backup": "node scripts/backup.js",
-    "test": "node --test test/"
+    "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

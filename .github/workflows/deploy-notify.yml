@@ -1,0 +1,189 @@
+name: Deploy bildirimi
+
+# main'e her birleşmede Dokploy otomatik dağıtım yapar. Bu iş akışı dağıtımı
+# tetiklemez; dağıtımın gerçekten canlıya indiğini DOĞRULAR ve sonucu Google
+# Chat'e bildirir. Sitenin 200 dönmesi yeterli kanıt değildir — eski konteyner
+# de 200 döner — bu yüzden /api/version ucundaki buildTime karşılaştırılır.
+#
+# Gerekli depo ayarları:
+#   vars.SITE                       -> https://vet.example.com (sondaki / olmadan)
+#   secrets.GOOGLE_CHAT_WEBHOOK_URL -> Google Chat alanı webhook adresi
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-notify
+  cancel-in-progress: false
+
+env:
+  APP_NAME: Veteriner SMS
+  SITE: ${{ vars.SITE }}
+  # Dokploy'un imajı derleyip yayına alması için tanınan süre
+  TIMEOUT_MINUTES: 10
+
+jobs:
+  verify-and-notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Depoyu al
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Uygulamayı etkileyen değişiklik var mı
+        id: scope
+        run: |
+          # Elle tetikleme bir dağıtım değildir; yalnızca webhook ve mesaj biçimi sınanır.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "mode=test" >> "$GITHUB_OUTPUT"
+            echo "app_changed=false" >> "$GITHUB_OUTPUT"
+            echo "Elle tetikleme: test modu."
+            exit 0
+          fi
+          echo "mode=deploy" >> "$GITHUB_OUTPUT"
+
+          # Yalnızca .dockerignore'daki dosyalar (README, .github, test) değiştiyse imaj
+          # aynıdır ve BUILD_TIME değişmez; böyle bir push'ta beklemek yanlış alarm üretir.
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            echo "Önceki commit bilinmiyor; doğrulama yapılacak."
+            echo "app_changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}")
+          echo "Değişen dosyalar:"; echo "$CHANGED"
+
+          # İmaja giren yollar (Dockerfile COPY satırları ve .dockerignore ile tutarlı)
+          if echo "$CHANGED" | grep -qE '^(src/|views/|public/|scripts/|package(-lock)?\.json|Dockerfile|\.dockerignore|docker-compose\.yml)'; then
+            echo "app_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "app_changed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Uygulama dosyaları değişmedi; dağıtım doğrulaması atlanıyor."
+          fi
+
+      - name: Ayarlar tanımlı mı
+        id: guard
+        env:
+          HOOK: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::warning::GOOGLE_CHAT_WEBHOOK_URL secret'ı tanımlı değil; bildirim atlanıyor."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -z "$SITE" ]; then
+            echo "::warning::SITE değişkeni (Settings > Variables) tanımlı değil; doğrulama atlanıyor."
+            echo "site=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "site=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Test bildirimi
+        if: steps.guard.outputs.enabled == 'true' && steps.scope.outputs.mode == 'test'
+        env:
+          HOOK: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          jq -n --arg app "$APP_NAME" --arg run "$RUN_URL" \
+            '{text: ("🔔 *" + $app + " — bildirim testi*\nBu mesajı görüyorsanız webhook ve metin biçimi çalışıyor.\n<" + $run + "|Çalışmayı gör>")}' > test.json
+          curl -sS -X POST -H 'Content-Type: application/json' -d @test.json "$HOOK" -o /dev/null
+
+      - name: Başlangıç bildirimi
+        if: steps.guard.outputs.enabled == 'true' && steps.scope.outputs.mode == 'deploy' && steps.scope.outputs.app_changed == 'true'
+        env:
+          HOOK: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
+          REPO: ${{ github.repository }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          AUTHOR: ${{ github.event.head_commit.author.name }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # Metin mesajı: bildirim önizlemesinde kartlar içerik göstermiyor. jq, commit
+          # mesajındaki tırnak/satır sonunu güvenli kılar.
+          jq -n \
+            --arg app "$APP_NAME" \
+            --arg sub "$(echo "$COMMIT_MSG" | head -1)" \
+            --arg repo "$REPO" \
+            --arg author "$AUTHOR" \
+            --arg sha "${SHA:0:7}" \
+            --arg run "$RUN_URL" \
+            '{text: ("🚀 *" + $app + " — dağıtım başladı*\n"
+                     + $sub + "\n"
+                     + "Depo: " + $repo + " · Commit: " + $sha + " · Geliştirici: " + $author + "\n"
+                     + "<" + $run + "|Çalışmayı gör>")}' > payload.json
+          curl -sS -X POST -H 'Content-Type: application/json' -d @payload.json "$HOOK" -o /dev/null
+
+      - name: Yeni sürümün canlıya indiğini doğrula
+        id: verify
+        if: steps.scope.outputs.mode == 'deploy' && steps.scope.outputs.app_changed == 'true' && steps.guard.outputs.site == 'true'
+        run: |
+          # Referans zaman: iş akışının başlangıcından 2 dk öncesi (saat kayması payı).
+          # Dockerfile'daki BUILD_TIME, Dokploy imajı derlerken yazılır; push'tan sonra
+          # üretilen her imaj bu referanstan yenidir.
+          REF=$(( $(date -u +%s) - 120 ))
+          DEADLINE=$(( $(date -u +%s) + TIMEOUT_MINUTES * 60 ))
+
+          echo "Beklenen: $SITE/api/version buildTime > $(date -u -d "@$REF" +%FT%TZ)"
+
+          while [ "$(date -u +%s)" -lt "$DEADLINE" ]; do
+            BODY=$(curl -sS --max-time 15 "$SITE/api/version?cb=$(date +%s)" || echo '')
+            NAME=$(echo "$BODY" | jq -r '.name // empty' 2>/dev/null || echo '')
+            BUILD=$(echo "$BODY" | jq -r '.buildTime // empty' 2>/dev/null || echo '')
+
+            if [ "$NAME" = "veteriner-sms" ] && [ -n "$BUILD" ] && [ "$BUILD" != "unknown" ]; then
+              BUILD_EPOCH=$(date -u -d "$BUILD" +%s 2>/dev/null || echo 0)
+              if [ "$BUILD_EPOCH" -ge "$REF" ]; then
+                echo "Yeni sürüm yayında: $BUILD"
+                {
+                  echo "status=success"
+                  echo "build_time=$BUILD"
+                } >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              echo "Hâlâ eski sürüm ($BUILD), bekleniyor..."
+            else
+              echo "Sürüm ucu okunamadı, bekleniyor..."
+            fi
+            sleep 20
+          done
+
+          echo "status=timeout" >> "$GITHUB_OUTPUT"
+          echo "::error::Dağıtım ${TIMEOUT_MINUTES} dakikada canlıya inmedi."
+          exit 1
+
+      - name: Sonuç bildirimi
+        if: always() && steps.guard.outputs.enabled == 'true' && steps.scope.outputs.mode == 'deploy' && steps.scope.outputs.app_changed == 'true'
+        env:
+          HOOK: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
+          STATUS: ${{ steps.verify.outputs.status }}
+          BUILD_TIME: ${{ steps.verify.outputs.build_time }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ "$STATUS" = "success" ]; then
+            TITLE="✅ $APP_NAME — dağıtım canlıda"
+            DETAIL="Derleme: $BUILD_TIME"
+          elif [ -z "$SITE" ]; then
+            TITLE="ℹ️ $APP_NAME — dağıtım doğrulanmadı"
+            DETAIL="SITE değişkeni tanımlı olmadığı için /api/version kontrolü atlandı."
+          else
+            TITLE="⚠️ $APP_NAME — dağıtım doğrulanamadı"
+            DETAIL="Site ${TIMEOUT_MINUTES} dakikada yeni sürüme geçmedi. Dokploy panelinde Deployments sekmesini kontrol edin."
+          fi
+
+          jq -n \
+            --arg title "$TITLE" \
+            --arg detail "$DETAIL" \
+            --arg sha "${SHA:0:7}" \
+            --arg site "${SITE:-https://github.com}" \
+            --arg run "$RUN_URL" \
+            '{text: ("*" + $title + "*\n"
+                     + $detail + " · Commit: " + $sha + "\n"
+                     + "<" + $site + "|Siteyi aç> · <" + $run + "|Çalışmayı gör>")}' > result.json
+          curl -sS -X POST -H 'Content-Type: application/json' -d @result.json "$HOOK" -o /dev/null

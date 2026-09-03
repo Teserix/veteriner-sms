@@ -1,0 +1,26 @@
+<%- include('partials/header') %>
+<h1>CSV içe aktar</h1>
+<p class="muted small">Mevcut hasta sahibi ve hayvan listenizi tek seferde aktarın. Yükledikten sonra sütunları eşleştirip önizlemeyi onaylayacaksınız; onaylamadan hiçbir kayıt yazılmaz.</p>
+<div class="card">
+  <form method="post" action="/iceaktar" enctype="multipart/form-data">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <label for="file">CSV dosyası *</label>
+    <input id="file" type="file" name="file" accept=".csv,text/csv,text/plain" required>
+    <p class="help">En fazla <%= maxMb %> MB, <%= limits.maxRows %> satır ve <%= limits.maxColumns %> sütun. Ayraç (; , sekme) ve karakter kodlaması (UTF-8 / Windows-1254) otomatik algılanır.</p>
+    <div class="form-actions">
+      <button class="btn" type="submit">Yükle ve devam et</button>
+      <a class="btn secondary" href="/sahipler">Vazgeç</a>
+    </div>
+  </form>
+</div>
+<div class="card">
+  <h2 class="mt0">Excel'den CSV nasıl kaydedilir?</h2>
+  <ol class="small">
+    <li>İlk satırda sütun başlıkları olsun (örn. <code>Sahip Adı; Telefon; Hayvan Adı; Tür; Irk; Cinsiyet; Doğum Tarihi; E-posta</code>).</li>
+    <li>Her satırda bir hayvan bulunsun; aynı sahibin birden çok hayvanı için telefonu tekrar yazın (aynı telefon tek sahipte birleştirilir).</li>
+    <li>Excel'de <strong>Dosya → Farklı Kaydet</strong> → dosya türü olarak <strong>"CSV UTF-8 (virgülle ayrılmış)"</strong> seçin.</li>
+    <li>Bu sayfadan dosyayı yükleyin, sütunları eşleştirin ve önizlemeyi onaylayın.</li>
+  </ol>
+  <p class="help">Telefonlar 05xx ile başlayan Türkiye cep numarası olmalı. Zaten kayıtlı telefonlara yalnızca yeni hayvanlar eklenir; mevcut kayıtlar değiştirilmez. Dışa aktarılan liste (<a href="/sahipler/disa-aktar.csv">disa-aktar.csv</a>) aynı biçimde geri yüklenebilir.</p>
+</div>
+<%- include('partials/footer') %>

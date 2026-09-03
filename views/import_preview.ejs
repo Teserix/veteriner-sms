@@ -1,0 +1,46 @@
+<%- include('partials/header') %>
+<h1>Önizleme</h1>
+<p class="muted small"><strong><%= batch.filename %></strong> · <%= list.length %> satır. Aynı telefon numarası tek hasta sahibinde birleştirilir; zaten kayıtlı sahiplere yalnızca yeni hayvanlar eklenir. Hatalı satırlar aktarılmaz.</p>
+<div class="grid grid-3">
+  <div class="card stat"><div class="num"><%= counts.new_owner %></div><div class="lbl">Yeni sahip</div></div>
+  <div class="card stat"><div class="num"><%= counts.add_pet %></div><div class="lbl">Mevcut sahibe hayvan</div></div>
+  <div class="card stat"><div class="num"><%= counts.skip_duplicate %></div><div class="lbl">Zaten kayıtlı (atlanacak)</div></div>
+  <div class="card stat"><div class="num"><%= counts.error %></div><div class="lbl">Hatalı satır</div></div>
+</div>
+<div class="card">
+  <div class="row">
+    <% if (canApply) { %>
+    <form method="post" action="/iceaktar/<%= token %>/onayla" data-confirm="<%= counts.new_owner %> yeni sahip ve <%= counts.new_owner + counts.add_pet %> hayvan eklenecek. Onaylıyor musunuz?">
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <button class="btn" type="submit">Onayla ve içe aktar</button>
+    </form>
+    <% } else { %>
+    <span class="muted small">Aktarılacak yeni kayıt yok.</span>
+    <% } %>
+    <a class="btn secondary" href="/iceaktar/<%= token %>/eslestir">Eşleştirmeye dön</a>
+    <% if (counts.error) { %><a class="btn secondary" href="/iceaktar/<%= token %>/hatalar.csv">Hatalı satırları indir (CSV)</a><% } %>
+    <span class="spacer"></span>
+    <a class="small" href="/iceaktar">Vazgeç</a>
+  </div>
+</div>
+<div class="card">
+  <table class="import-table">
+    <tr><th>Satır</th><th>Durum</th><th>Sahip</th><th>Telefon</th><th>E-posta</th><th>Hayvan</th><th>Tür</th><th>Irk</th><th>Cinsiyet</th><th>Doğum</th><th>Açıklama</th></tr>
+    <% for (const r of list) { %>
+    <tr>
+      <td class="muted"><%= r.rowNo %></td>
+      <td><span class="badge <%= r.action %>"><%= labels[r.action] %></span></td>
+      <td><%= r.owner_name %></td>
+      <td class="mono"><%= r.phoneFormatted || r.phoneRaw %></td>
+      <td><%= r.email || '' %></td>
+      <td><%= r.pet_name %></td>
+      <td><%= r.species || '' %></td>
+      <td><%= r.breed || '' %></td>
+      <td><%= r.sex || '' %></td>
+      <td><%= r.birth_date ? formatDate(r.birth_date) : '' %></td>
+      <td class="small <%= r.action === 'error' ? '' : 'muted' %>"><%= r.reason %></td>
+    </tr>
+    <% } %>
+  </table>
+</div>
+<%- include('partials/footer') %>

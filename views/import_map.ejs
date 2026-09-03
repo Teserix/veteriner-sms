@@ -1,0 +1,38 @@
+<%- include('partials/header') %>
+<h1>Sütunları eşleştir</h1>
+<p class="muted small"><strong><%= batch.filename %></strong> · <%= batch.rows.length %> satır, <%= batch.headers.length %> sütun · kodlama: <%= batch.encoding %> · ayraç: <%= batch.delimiter === '\t' ? 'sekme' : batch.delimiter %></p>
+<div class="card">
+  <% if (error) { %><div class="flash err"><%= error %></div><% } %>
+  <form method="post" action="/iceaktar/<%= token %>/eslestir">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <div class="form-grid">
+      <% for (const [key, f] of Object.entries(fields)) { %>
+      <div>
+        <label for="map_<%= key %>"><%= f.label %><%= f.required ? ' *' : '' %></label>
+        <select id="map_<%= key %>" name="map_<%= key %>">
+          <option value="">— Kullanma —</option>
+          <% batch.headers.forEach((h, i) => { %>
+          <option value="<%= i %>" <%= mapping[key] === i ? 'selected' : '' %>><%= h || ('Sütun ' + (i + 1)) %></option>
+          <% }) %>
+        </select>
+      </div>
+      <% } %>
+    </div>
+    <div class="form-actions">
+      <button class="btn" type="submit">Önizlemeye geç</button>
+      <a class="btn secondary" href="/iceaktar">Başka dosya yükle</a>
+    </div>
+  </form>
+</div>
+<div class="card">
+  <h2 class="mt0">İlk <%= preview.length %> satır</h2>
+  <div class="preview-box">
+    <table class="import-table">
+      <tr><th>#</th><% for (const h of batch.headers) { %><th><%= h %></th><% } %></tr>
+      <% preview.forEach((r, i) => { %>
+      <tr><td class="muted"><%= i + 2 %></td><% batch.headers.forEach((h, j) => { %><td><%= r[j] %></td><% }) %></tr>
+      <% }) %>
+    </table>
+  </div>
+</div>
+<%- include('partials/footer') %>

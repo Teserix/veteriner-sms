@@ -171,6 +171,8 @@ export function csrfMiddleware(req, res, next) {
     if (req.path === '/giris') return next();
     return res.status(403).render('error', { title: 'Oturum bulunamadı', message: 'Oturumunuz sona ermiş. Lütfen yeniden giriş yapın.' });
   }
+  // Dosya yükleme (multipart) gövdesi burada ayrıştırılmaz; /iceaktar rotası alanları okuduktan sonra belirteci kendisi doğrular
+  if (req.path.startsWith('/iceaktar') && String(req.headers['content-type'] || '').toLowerCase().startsWith('multipart/form-data')) return next();
   const sent = req.body?._csrf || req.headers['x-csrf-token'];
   if (!safeEqual(sent, req.session.csrf)) {
     return res.status(403).render('error', { title: 'Güvenlik hatası', message: 'Form belirteci geçersiz. Sayfayı yenileyip tekrar deneyin.' });
