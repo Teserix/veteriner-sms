@@ -17,6 +17,7 @@ export const importRouter = Router();
 
 const BATCH_TTL_MS = 30 * 60 * 1000;
 const MAX_BATCHES_PER_CLINIC = 5;
+const MAX_BATCHES_GLOBAL = 100;
 const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
 const TOKEN_RE = /^[A-Za-z0-9_-]{32}$/;
 
@@ -26,11 +27,20 @@ export const _batches = new Map();
 function cleanup(now = Date.now()) {
   for (const [t, b] of _batches) if (b.expiresAt <= now) _batches.delete(t);
 }
+setInterval(() => cleanup(), 60_000).unref(); // istek gelmese de süresi dolan partiler bellekten düşsün
+
+function evictOldest() {
+  let oldestKey = null;
+  let oldest = Infinity;
+  for (const [t, b] of _batches) if (b.createdAt < oldest) { oldest = b.createdAt; oldestKey = t; }
+  if (oldestKey) _batches.delete(oldestKey);
+}
 
 function storeBatch(clinicId, data) {
   cleanup();
   const own = [..._batches.entries()].filter(([, b]) => b.clinicId === clinicId).sort((a, b) => a[1].createdAt - b[1].createdAt);
   while (own.length >= MAX_BATCHES_PER_CLINIC) _batches.delete(own.shift()[0]);
+  while (_batches.size >= MAX_BATCHES_GLOBAL) evictOldest();
   const token = randomToken(24);
   const now = Date.now();
   _batches.set(token, { clinicId, mapping: null, ...data, createdAt: now, expiresAt: now + BATCH_TTL_MS });
@@ -89,7 +99,7 @@ importRouter.post('/',
     const token = storeBatch(req.user.clinicId, {
       filename: req.file.filename,
       headers: parsed.headers,
-      rows: parsed.rows,
+      rows: parsed.rows, lines: parsed.lines,
       delimiter: parsed.delimiter,
       encoding: parsed.encoding,
     });
@@ -138,7 +148,7 @@ importRouter.post('/:token/eslestir', loadBatch, (req, res) => {
 importRouter.get('/:token/onizle', loadBatch, (req, res) => {
   const b = req.batch;
   if (!b.mapping) return res.redirect(`/iceaktar/${req.batchToken}/eslestir`);
-  const classified = classifyRows(req.db, b.rows, b.mapping);
+  const classified = classifyRows(req.db, b.rows, b.mapping, b.lines);
   const counts = summarize(classified);
   res.render('import_preview', {
     title: 'Önizleme',
@@ -155,7 +165,7 @@ importRouter.get('/:token/onizle', loadBatch, (req, res) => {
 importRouter.post('/:token/onayla', loadBatch, (req, res) => {
   const b = req.batch;
   if (!b.mapping) return res.redirect(`/iceaktar/${req.batchToken}/eslestir`);
-  const classified = classifyRows(req.db, b.rows, b.mapping);
+  const classified = classifyRows(req.db, b.rows, b.mapping, b.lines);
   const counts = applyImport(req.db, classified, { batchToken: req.batchToken, createdBy: req.user.email });
   _batches.delete(req.batchToken);
   audit(req, 'import.apply', { meta: { ...counts, rows: classified.length } });
@@ -168,7 +178,7 @@ importRouter.post('/:token/onayla', loadBatch, (req, res) => {
 importRouter.get('/:token/hatalar.csv', loadBatch, (req, res) => {
   const b = req.batch;
   if (!b.mapping) return res.redirect(`/iceaktar/${req.batchToken}/eslestir`);
-  const errors = classifyRows(req.db, b.rows, b.mapping).filter((r) => r.action === 'error');
+  const errors = classifyRows(req.db, b.rows, b.mapping, b.lines).filter((r) => r.action === 'error');
   const rows = [['Satır', 'Sahip', 'Telefon', 'E-posta', 'Hayvan', 'Hata']];
   for (const r of errors) rows.push([r.rowNo, r.owner_name, r.phoneRaw, r.email || '', r.pet_name, r.reason]);
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');

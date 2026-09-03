@@ -175,6 +175,9 @@ export const owners = {
     .run(o.name, o.phone, o.email ?? null, o.notes ?? null, o.sms_opt_in ?? 1, o.created_at, o.import_batch ?? null).lastInsertRowid,
   update: (db, id, o) => db.prepare('UPDATE owners SET name = ?, phone = ?, email = ?, notes = ?, sms_opt_in = ? WHERE id = ?')
     .run(o.name, o.phone, o.email ?? null, o.notes ?? null, o.sms_opt_in ?? 1, id),
+  /** İçe aktarmada mevcut sahibin BOŞ olan e-posta/not alanlarını doldurur; dolu alanlara dokunmaz */
+  fillEmpty: (db, id, { email = null, notes = null }) => db.prepare(
+    `UPDATE owners SET email = COALESCE(NULLIF(email, ''), ?), notes = COALESCE(NULLIF(notes, ''), ?) WHERE id = ?`).run(email, notes, id),
   delete: (db, id) => db.prepare('DELETE FROM owners WHERE id = ?').run(id),
   count: (db) => db.prepare('SELECT COUNT(*) AS c FROM owners').get().c,
 };
@@ -235,6 +238,15 @@ export const reminders = {
     .run(r.type, r.title, r.due_date, r.notify_days_before, r.repeat_days ?? null, r.notes ?? null, id),
   setStatus: (db, id, status) => db.prepare('UPDATE reminders SET status = ? WHERE id = ?').run(status, id),
   resetForRetry: (db, id) => db.prepare(`UPDATE reminders SET status = 'pending', attempts = 0, last_error = NULL, last_attempt_at = NULL WHERE id = ?`).run(id),
+  /** Tarih değişince gönderilmiş/başarısız hatırlatmayı yeniden beklemeye alır */
+  reopen: (db, id) => db.prepare(`UPDATE reminders SET status = 'pending', attempts = 0, last_error = NULL, last_attempt_at = NULL, sent_at = NULL WHERE id = ?`).run(id),
+  /** Gönderimden hemen önce iz bırakır: çökme/yeniden başlatmada aynı hatırlatma 4 saat içinde tekrar gönderilmez */
+  claim: (db, id, at) => db.prepare(`UPDATE reminders SET last_attempt_at = ? WHERE id = ? AND status = 'pending'`).run(at, id).changes,
+  setLastAttempt: (db, id, value) => db.prepare('UPDATE reminders SET last_attempt_at = ? WHERE id = ?').run(value, id),
+  existsPending: (db, petId, title, dueDate) =>
+    Boolean(db.prepare(`SELECT 1 FROM reminders WHERE pet_id = ? AND title = ? AND due_date = ? AND status = 'pending' LIMIT 1`).get(petId, title, dueDate)),
+  /** Kalıcı olarak başarısız olanlar (panelde gösterilir) */
+  failedList: (db) => db.prepare(`${REMINDER_SELECT} WHERE r.status = 'failed' ORDER BY r.due_date DESC LIMIT 100`).all(),
   markSent: (db, id, at) => db.prepare(`UPDATE reminders SET status = 'sent', sent_at = ?, attempts = attempts + 1, last_attempt_at = ?, last_error = NULL WHERE id = ?`).run(at, at, id),
   markAttemptFailed: (db, id, at, error, maxAttempts) => db.prepare(`
     UPDATE reminders SET attempts = attempts + 1, last_attempt_at = ?, last_error = ?,

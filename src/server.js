@@ -41,10 +41,11 @@ async function shutdown(sig) {
   if (shuttingDown) return;
   shuttingDown = true;
   log.info('kapatılıyor', { signal: sig });
-  const force = setTimeout(() => { log.warn('zorla kapatıldı'); process.exit(1); }, 10_000);
+  // Önce zamanlayıcı: çalışan tur (sağlayıcı isteği dahil) bitsin ki gönderilen SMS kayda geçsin.
+  const force = setTimeout(() => { log.warn('zorla kapatıldı'); process.exit(1); }, 25_000);
   force.unref();
-  await new Promise((resolve) => server.close(resolve));
   await stopScheduler();
+  await new Promise((resolve) => server.close(resolve));
   closeAll();
   process.exit(0);
 }

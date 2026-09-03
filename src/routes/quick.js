@@ -7,7 +7,7 @@ import { normalizePhone, trim, toInt, nowIso, isValidDate, isValidEmail, addDays
 export const quickRouter = Router();
 
 function defaults() {
-  return { type: 'asi', notify_days_before: 1, due_date: addDays(todayLocal(), 7), species: 'Kedi', sms_opt_in: 1 };
+  return { type: 'asi', notify_days_before: 1, due_date: addDays(todayLocal(), 7), species: 'Kedi', sms_opt_in: '1', add_reminder: '1' };
 }
 
 quickRouter.get('/hizli-kayit', (req, res) => {
@@ -16,7 +16,8 @@ quickRouter.get('/hizli-kayit', (req, res) => {
 
 quickRouter.post('/hizli-kayit', (req, res) => {
   const b = req.body;
-  const form = { ...defaults(), ...b };
+  // Onay kutuları: işaretsiz kutu hiç gönderilmez; yeniden çizimde kullanıcının seçimi korunsun
+  const form = { ...defaults(), ...b, sms_opt_in: b.sms_opt_in === '1' ? '1' : '0', add_reminder: b.add_reminder === '1' ? '1' : '0' };
   const err = (m) => res.status(400).render('quick_form', { title: 'Hızlı kayıt', form, error: m });
 
   const ownerName = trim(b.owner_name, 120);

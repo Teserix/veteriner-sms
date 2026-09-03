@@ -56,6 +56,14 @@
 </div>
 <% } %>
 
+<% if (failed.length) { %>
+<h2>Gönderilemeyenler (<%= failed.length %>)</h2>
+<div class="card">
+  <p class="small muted">Üç deneme de başarısız oldu (sağlayıcı ayarı, bakiye ya da numara sorunu olabilir). Sorunu giderdikten sonra "Şimdi gönder" ile yeniden deneyin.</p>
+  <% rowsTable(failed, true); %>
+</div>
+<% } %>
+
 <h2>Önümüzdeki 7 gün</h2>
 <div class="card">
   <% if (!upcoming.length) { %><div class="empty">Yaklaşan hatırlatma yok.</div><% } else { rowsTable(upcoming, false); } %>

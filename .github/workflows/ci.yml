@@ -43,7 +43,10 @@ jobs:
             veteriner-sms:ci
           for i in $(seq 1 20); do
             if curl -fsS http://localhost:3000/api/health >/dev/null 2>&1; then
-              echo "Sağlıklı."; curl -sS http://localhost:3000/api/version; echo; exit 0
+              echo "Sağlıklı."
+              V=$(curl -fsS http://localhost:3000/api/version); echo "$V"
+              echo "$V" | jq -e '.name == "veteriner-sms" and .buildTime != "unknown"' >/dev/null || { echo "::error::/api/version beklenen içerikte değil (BUILD_TIME imaja yazılmamış?)"; exit 1; }
+              exit 0
             fi
             sleep 2
           done

@@ -33,6 +33,7 @@
 
   <div class="card">
     <h2 class="mt0">SMS sağlayıcısı</h2>
+    <% if (credentialsBroken) { %><div class="warnbox">Kayıtlı sağlayıcı hesap bilgileri çözülemiyor (sunucunun APP_SECRET değeri değişmiş). SMS gönderimi bu bilgiler yeniden girilene kadar başarısız olur.</div><% } %>
     <label for="sms_provider">Sağlayıcı</label>
     <select id="sms_provider" name="sms_provider">
       <% for (const [k, p] of Object.entries(providers)) { %><option value="<%= k %>" <%= settings.sms_provider === k ? 'selected' : '' %>><%= p.label %></option><% } %>

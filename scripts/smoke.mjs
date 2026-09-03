@@ -1,4 +1,7 @@
-const BASE = 'http://localhost:3199';
+// Kullanım: boş DATA_DIR ile açılmış sunucuya karşı. Ortam: SMOKE_BASE, SMOKE_ADMIN_EMAIL, SMOKE_ADMIN_PASSWORD
+const BASE = process.env.SMOKE_BASE || 'http://localhost:3199';
+const ADMIN_EMAIL = process.env.SMOKE_ADMIN_EMAIL || 'admin@example.com';
+const ADMIN_PASSWORD = process.env.SMOKE_ADMIN_PASSWORD || 'Admin12345';
 const jar = {};
 function cookieHeader() { return Object.entries(jar).map(([k, v]) => `${k}=${v}`).join('; '); }
 function storeCookies(res) {
@@ -24,13 +27,13 @@ let fails = 0;
 function check(name, cond, extra = '') { console.log((cond ? 'OK   ' : 'FAIL ') + name + (cond ? '' : '  ' + extra)); if (!cond) fails++; }
 
 // 1) login CSRF: post without pre-token
-let r = await post('/giris', { email: 'admin@example.com', password: 'Admin12345' });
+let r = await post('/giris', { email: ADMIN_EMAIL, password: ADMIN_PASSWORD });
 check('login without pre-token -> 403', r.status === 403, r.status);
 // 2) proper login
 r = await get('/giris');
 let token = csrfOf(r.text);
 check('login page has pre token', Boolean(token));
-r = await post('/giris', { _csrf: token, email: 'admin@example.com', password: 'Admin12345', next: '/' });
+r = await post('/giris', { _csrf: token, email: ADMIN_EMAIL, password: ADMIN_PASSWORD, next: '/' });
 check('superadmin login -> redirect /admin', r.status === 302 && r.location === '/admin', `${r.status} ${r.location}`);
 r = await get('/admin');
 check('GET /admin 200', r.status === 200, r.status);

@@ -1,9 +1,10 @@
 import { config } from './config.js';
 import { clinics } from './db/master.js';
 import { openTenant, getSettings, reminders } from './db/tenant.js';
-import { dispatch } from './sms/dispatch.js';
+import { dispatchUnlocked, lockKey } from './sms/dispatch.js';
 import { renderTemplate } from './sms/index.js';
-import { nowLocal, nowIso, formatDate, addDays, REMINDER_TYPES } from './util.js';
+import { withLock } from './lock.js';
+import { nowLocal, nowIso, todayLocal, formatDate, addDays, REMINDER_TYPES } from './util.js';
 import { log } from './log.js';
 import { maybeBackup } from './backup.js';
 
@@ -23,34 +24,65 @@ export function buildMessage(settings, r) {
 }
 
 /**
- * Tek bir hatırlatma için SMS gönderir, durumu günceller, tekrar varsa sonrakini oluşturur.
- * Zamanlayıcı ve "Şimdi gönder" düğmesi bunu kullanır.
+ * Tekrarlayan hatırlatmanın bir sonraki tarihi: bildirim günü (due - notify) bugünden SONRA
+ * olana kadar repeat_days adımlarıyla ilerler; böylece yeni kayıt hemen "bugün gönderilecek" olmaz.
  */
-export async function sendReminderSms(clinicId, db, settings, r, sentBy = 'zamanlayici') {
-  const message = buildMessage(settings, r);
-  const result = await dispatch({
-    clinicId, db, settings, kind: 'reminder', to: r.owner_phone, message,
-    owner: { id: r.owner_id, name: r.owner_name, sms_opt_in: r.sms_opt_in },
-    pet: { id: r.pet_id, name: r.pet_name },
-    reminderId: r.id, sentBy,
-  });
-  const at = nowIso();
+export function nextDueDate(dueDate, repeatDays, notifyDays, today) {
+  const step = Math.max(1, Number(repeatDays) || 1);
+  let next = addDays(dueDate, step);
+  let guard = 0;
+  while (addDays(next, -Number(notifyDays || 0)) <= today && guard++ < 5000) next = addDays(next, step);
+  return next;
+}
 
-  if (result.ok) {
-    reminders.markSent(db, r.id, at);
-    if (r.repeat_days && r.repeat_days > 0) {
-      reminders.create(db, {
-        pet_id: r.pet_id, type: r.type, title: r.title,
-        due_date: addDays(r.due_date, r.repeat_days),
-        notify_days_before: r.notify_days_before, repeat_days: r.repeat_days,
-        notes: r.notes, created_at: at, created_by: 'tekrar',
-      });
+function createNextOccurrence(db, r, at, today) {
+  if (!r.repeat_days || r.repeat_days <= 0) return null;
+  const due = nextDueDate(r.due_date, r.repeat_days, r.notify_days_before, today);
+  if (reminders.existsPending(db, r.pet_id, r.title, due)) return null;
+  return reminders.create(db, {
+    pet_id: r.pet_id, type: r.type, title: r.title, due_date: due,
+    notify_days_before: r.notify_days_before, repeat_days: r.repeat_days,
+    notes: r.notes, created_at: at, created_by: 'tekrar',
+  });
+}
+
+/**
+ * Tek bir hatırlatma için SMS gönderir, durumu günceller, tekrar varsa sonrakini oluşturur.
+ * Zamanlayıcı ve "Şimdi gönder" düğmesi bunu kullanır. Klinik kilidi altında çalışır:
+ * satır yeniden okunur, artık beklemede değilse gönderilmez (çift gönderim yok).
+ */
+export function sendReminderSms(clinicId, db, settings, r, sentBy = 'zamanlayici', now = new Date()) {
+  return withLock(lockKey(clinicId), async () => {
+    const fresh = reminders.get(db, r.id);
+    if (!fresh || fresh.status !== 'pending') {
+      return { ok: false, skipped: 'state', error: 'Hatırlatma artık beklemede değil (gönderilmiş ya da kapatılmış).' };
     }
-  } else if (!result.skipped) {
-    // Gerçek gönderim hatası: deneme sayısı artar, 3'te 'failed'
-    reminders.markAttemptFailed(db, r.id, at, result.error || 'Bilinmeyen hata', MAX_ATTEMPTS);
-  }
-  return { ...result, message };
+    const at = nowIso();
+    const today = todayLocal(now);
+    const prevAttempt = fresh.last_attempt_at;
+    reminders.claim(db, fresh.id, at); // çökme koruması: yarım kalan gönderim 4 saat içinde tekrar denenmez
+    const message = buildMessage(settings, fresh);
+    const result = await dispatchUnlocked({
+      clinicId, db, settings, kind: 'reminder', to: fresh.owner_phone, message,
+      owner: { id: fresh.owner_id, name: fresh.owner_name, sms_opt_in: fresh.sms_opt_in },
+      pet: { id: fresh.pet_id, name: fresh.pet_name },
+      reminderId: fresh.id, sentBy,
+    });
+
+    if (result.ok) {
+      reminders.markSent(db, fresh.id, at);
+      createNextOccurrence(db, fresh, at, today);
+    } else if (result.skipped) {
+      // Tavan / opt-out: gönderim denenmedi, izi geri al
+      reminders.setLastAttempt(db, fresh.id, prevAttempt);
+    } else {
+      reminders.markAttemptFailed(db, fresh.id, at, result.error || 'Bilinmeyen hata', MAX_ATTEMPTS);
+      const after = reminders.get(db, fresh.id);
+      // Kalıcı başarısızlık tekrar serisini bitirmesin: sonraki dönem yine oluşturulur
+      if (after?.status === 'failed') createNextOccurrence(db, fresh, at, today);
+    }
+    return { ...result, message };
+  });
 }
 
 /** Bir kliniğin bugün gönderilmesi gereken hatırlatmalarını işler */
@@ -72,7 +104,7 @@ export async function processClinic(clinicId, now = new Date()) {
     if (!r.sms_opt_in) { skipped++; continue; }
     if (r.last_attempt_at && nowMs - new Date(r.last_attempt_at).getTime() < RETRY_AFTER_MS) { skipped++; continue; }
     try {
-      const res = await sendReminderSms(clinicId, db, settings, r, 'zamanlayici');
+      const res = await sendReminderSms(clinicId, db, settings, r, 'zamanlayici', now);
       if (res.ok) sent++;
       else if (res.skipped === 'cap') { skipped += due.length - sent - failed - skipped; break; }
       else if (res.skipped) skipped++;

@@ -49,6 +49,8 @@ export function createApp() {
   app.use('/api', opsRouter);
 
   app.use(express.urlencoded({ extended: false, limit: '64kb', parameterLimit: 100 }));
+  // Express 5: gövde ayrıştırılmadıysa req.body undefined kalır; form olmayan POST'larda 500 yerine boş nesne
+  app.use((req, res, next) => { if (req.body == null) req.body = {}; next(); });
   app.use(sessionMiddleware);
 
   /* ---------- Görünüm yardımcıları (CSRF'den önce, hata sayfaları için) ---------- */

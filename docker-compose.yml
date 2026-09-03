@@ -20,7 +20,7 @@ services:
     restart: unless-stopped
     expose:
       - "3000"
-    stop_grace_period: 15s
+    stop_grace_period: 30s   # çalışan zamanlayıcı turu (sağlayıcı isteği dahil) bitsin
     environment:
       - NODE_ENV=production
       - TRUST_PROXY=1

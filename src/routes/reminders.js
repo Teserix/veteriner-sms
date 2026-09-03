@@ -73,7 +73,12 @@ remindersRouter.post('/hatirlatmalar/:id/duzenle', (req, res) => {
     return res.status(400).render('reminder_form', { title: 'Hatırlatmayı düzenle', pet, reminder: r, form: req.body, error: 'Geçerli bir tarih girin.' });
   }
   reminders.update(req.db, r.id, f);
-  res.redirect(`/sahipler/${r.owner_id}?ok=` + encodeURIComponent('Hatırlatma güncellendi.'));
+  let msg = 'Hatırlatma güncellendi.';
+  if (f.due_date !== r.due_date && (r.status === 'sent' || r.status === 'failed')) {
+    reminders.reopen(req.db, r.id);
+    msg = 'Hatırlatma güncellendi; tarih değiştiği için yeniden beklemeye alındı (SMS yeni tarihe göre gidecek).';
+  }
+  res.redirect(`/sahipler/${r.owner_id}?ok=` + encodeURIComponent(msg));
 });
 
 remindersRouter.post('/hatirlatmalar/:id/durum', (req, res) => {

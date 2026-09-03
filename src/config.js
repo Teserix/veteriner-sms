@@ -3,6 +3,7 @@ process.umask(0o077);
 
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 // .env dosyası varsa yükle (Node 20.12+ yerleşik). Ortam değişkenleri .env'i ezer.
 const envPath = path.resolve(process.cwd(), '.env');
@@ -21,10 +22,24 @@ function fail(msg) {
   console.warn('[UYARI] ' + msg);
 }
 
+/** Sayısal ortam değişkeni: boşsa varsayılan, sayı değilse hata (üretimde açılmaz) */
+function num(name, def, { min = null, max = null } = {}) {
+  const raw = env[name];
+  if (raw == null || String(raw).trim() === '') return def;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) { fail(`${name} sayısal olmalı (verilen: "${raw}"); varsayılan ${def} kullanılıyor.`); return def; }
+  let v = n;
+  if (min != null) v = Math.max(min, v);
+  if (max != null) v = Math.min(max, v);
+  return v;
+}
+
 let appSecret = env.APP_SECRET || '';
 if (appSecret.length < 32 || appSecret === PLACEHOLDER_SECRET) {
   fail('APP_SECRET en az 32 karakterlik rastgele bir değer olmalı (.env.example içindeki yer tutucu kullanılamaz).');
-  appSecret = 'dev-only-insecure-secret-do-not-use-in-production';
+  // Geliştirme: her açılışta rastgele anahtar; bilinen sabit bir anahtarla hiçbir şey şifrelenmez
+  appSecret = crypto.randomBytes(32).toString('hex');
+  console.warn('[UYARI] Geçici rastgele APP_SECRET üretildi; kaydedilen SMS hesap bilgileri yeniden başlatınca çözülemez.');
 }
 
 let appOrigin = (env.APP_ORIGIN || '').replace(/\/+$/, '');
@@ -35,7 +50,7 @@ if (appOrigin) {
 }
 
 export const config = {
-  port: Number(env.PORT || 3000),
+  port: num('PORT', 3000, { min: 1, max: 65535 }),
   isProd,
   trustProxy: env.TRUST_PROXY === '1' || env.TRUST_PROXY === 'true',
   appSecret,
@@ -44,9 +59,9 @@ export const config = {
   adminEmail: env.ADMIN_EMAIL || '',
   adminPassword: env.ADMIN_PASSWORD || '',
   enableScheduler: env.ENABLE_SCHEDULER === '1' || env.ENABLE_SCHEDULER === 'true',
-  schedulerIntervalSeconds: Math.max(15, Number(env.SCHEDULER_INTERVAL_SECONDS || 60)),
-  backupHour: Math.min(23, Math.max(0, Number(env.BACKUP_HOUR ?? 3))),
-  backupRetentionDays: Math.max(1, Number(env.BACKUP_RETENTION_DAYS || 14)),
+  schedulerIntervalSeconds: num('SCHEDULER_INTERVAL_SECONDS', 60, { min: 15 }),
+  backupHour: num('BACKUP_HOUR', 3, { min: 0, max: 23 }),
+  backupRetentionDays: num('BACKUP_RETENTION_DAYS', 14, { min: 1 }),
   sessionTtlHours: 12,
   timeZone: 'Europe/Istanbul',
   version: env.APP_VERSION || '1.0.0',

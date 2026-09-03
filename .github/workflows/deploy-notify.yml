@@ -59,7 +59,9 @@ jobs:
           echo "Değişen dosyalar:"; echo "$CHANGED"
 
           # İmaja giren yollar (Dockerfile COPY satırları ve .dockerignore ile tutarlı)
-          if echo "$CHANGED" | grep -qE '^(src/|views/|public/|scripts/|package(-lock)?\.json|Dockerfile|\.dockerignore|docker-compose\.yml)'; then
+          # Yalnızca imaj KATMANLARINI değiştiren yollar (COPY edilen dosyalar + Dockerfile).
+          # docker-compose.yml / .dockerignore / scripts/smoke.mjs imaja girmez; onlar için yeni BUILD_TIME üretilmez.
+          if echo "$CHANGED" | grep -qE '^(src/|views/|public/|scripts/backup\.js|scripts/create-admin\.js|package(-lock)?\.json|Dockerfile)'; then
             echo "app_changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "app_changed=false" >> "$GITHUB_OUTPUT"
@@ -123,10 +125,11 @@ jobs:
         id: verify
         if: steps.scope.outputs.mode == 'deploy' && steps.scope.outputs.app_changed == 'true' && steps.guard.outputs.site == 'true'
         run: |
-          # Referans zaman: iş akışının başlangıcından 2 dk öncesi (saat kayması payı).
-          # Dockerfile'daki BUILD_TIME, Dokploy imajı derlerken yazılır; push'tan sonra
-          # üretilen her imaj bu referanstan yenidir.
-          REF=$(( $(date -u +%s) - 120 ))
+          # Referans zaman: dağıtılan commit'in zamanından 2 dk öncesi (saat kayması payı).
+          # Runner kuyrukta beklese bile Dokploy'un push'tan hemen sonra ürettiği imaj bu
+          # referanstan yenidir. Dockerfile'daki BUILD_TIME imaj derlenirken yazılır.
+          COMMIT_TS=$(git show -s --format=%ct "${{ github.sha }}" 2>/dev/null || date -u +%s)
+          REF=$(( COMMIT_TS - 120 ))
           DEADLINE=$(( $(date -u +%s) + TIMEOUT_MINUTES * 60 ))
 
           echo "Beklenen: $SITE/api/version buildTime > $(date -u -d "@$REF" +%FT%TZ)"

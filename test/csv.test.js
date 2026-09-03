@@ -55,11 +55,11 @@ test('parseCsv: NUL bayt reddedilir', () => {
   assert.throws(() => parseCsv(Buffer.concat([buf('a;b\n1;'), Buffer.from([0]), buf('2\n')])), /CSV gibi görünmüyor/);
 });
 
-test('parseCsv: boş satırlar atlanır, eksik hücreler tamamlanır, hücre 200 karaktere kırpılır', () => {
-  const long = 'x'.repeat(300);
+test('parseCsv: boş satırlar atlanır, eksik hücreler tamamlanır, hücre 1000 karaktere kırpılır', () => {
+  const long = 'x'.repeat(1200);
   const r = parseCsv(buf(`a;b;c\n\n;;\n1;${long}\n\n`));
   assert.equal(r.rows.length, 1);
-  assert.deepEqual(r.rows[0], ['1', 'x'.repeat(200), '']);
+  assert.deepEqual(r.rows[0], ['1', 'x'.repeat(1000), '']);
 });
 
 test('parseCsv: satır sınırı (5000)', () => {

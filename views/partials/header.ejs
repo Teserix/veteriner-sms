@@ -4,7 +4,8 @@
   const _flash = (typeof flash === 'object' && flash) ? flash : { ok: '', err: '' };
   const _csrf = (typeof csrf === 'string') ? csrf : '';
   const _title = (typeof title === 'string') ? title : '';
-  const nav = (p, label, extra) => `<a href="${p}" class="${(_path === p || (extra && extra.some((x) => _path.startsWith(x)))) ? 'active' : ''}">${label}</a>`;
+  const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const nav = (p, label, extra) => `<a href="${esc(p)}" class="${(_path === p || (extra && extra.some((x) => _path.startsWith(x)))) ? 'active' : ''}">${esc(label)}</a>`;
 %>
 <!doctype html>
 <html lang="tr">

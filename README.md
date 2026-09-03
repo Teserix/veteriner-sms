@@ -218,11 +218,12 @@ docker run --rm -v veteriner_sms_data:/data -v "$PWD":/out alpine \
 2. Volume içine dosyaları geri koyun:
    ```bash
    docker run --rm -v veteriner_sms_data:/data alpine sh -c '
-     set -e; B=/data/backups/2026-09-02
+     B=/data/backups/2026-09-02
+     test -f $B/master.db || { echo "yedek bulunamadı: $B"; exit 1; }
      rm -f /data/master.db-wal /data/master.db-shm /data/tenants/*.db-wal /data/tenants/*.db-shm
      cp $B/master.db /data/master.db
-     cp $B/tenants/*.db /data/tenants/
-     chown -R 1000:1000 /data'
+     [ -n "$(ls $B/tenants/*.db 2>/dev/null)" ] && cp $B/tenants/*.db /data/tenants/
+     chown -R 1000:1000 /data && chmod 700 /data /data/tenants && chmod 600 /data/master.db /data/tenants/*.db 2>/dev/null; true'
    ```
    (Tek bir klinik için yalnızca o kliniğin `tenants/<id>.db` dosyasını kopyalayın.)
 3. Başlatın: `docker compose start veteriner-sms`; `/api/health` ve `/admin` ile doğrulayın.
@@ -234,8 +235,10 @@ Yeni bir sunucuya taşırken **aynı `APP_SECRET`** kullanın; aksi halde şifre
 ### Silinen klinikler
 
 `/admin` üzerinden silinen kliniğin dosyası **silinmez**, `data/trash/<id>-<zaman>.db` olarak
-taşınır ve kullanıcıları pasifleştirilir. Bu klasör otomatik temizlenmez; KVKK/saklama
-politikanıza göre elle silin.
+taşınır; klinik kaydı ve o kliniğin kullanıcı hesapları `master.db`'den silinir. Geri almak
+için: `/admin`'den kliniği yeniden oluşturun (yeni bir kimlik alır), uygulamayı durdurun,
+`data/trash/` içindeki dosyayı `data/tenants/<yeni-id>.db` olarak kopyalayın ve başlatın.
+Bu klasör otomatik temizlenmez; KVKK/saklama politikanıza göre elle silin.
 
 ## Docker / Dokploy dağıtımı
 
@@ -268,15 +271,16 @@ Kurallar:
   kullanılır (giriş ve POST hız sınırları buna dayanır).
 - `expose: 3000` — host portu açılmaz; erişim yalnızca tünelden.
 - Loglar `json-file`, 3 × 10 MB döner.
-- Yeniden dağıtımda `stop_grace_period: 15s`: sunucu yeni istek almayı bırakır, çalışan
-  zamanlayıcı turunu bitirir, veritabanlarını kapatır.
+- Yeniden dağıtımda `stop_grace_period: 30s`: önce çalışan zamanlayıcı turu (sağlayıcıya
+  giden istek dahil) bitirilir, sonra sunucu kapanır ve veritabanları kapatılır; 25 sn'de
+  bitmezse süreç zorla kapanır.
 
 ### CI ve dağıtım bildirimi
 
 - `.github/workflows/ci.yml`: her push/PR'da Node 24 ile `npm ci`, `npm test`, `docker build`
   ve imajın `/api/health` ile ayağa kalktığının kontrolü (push yok).
 - `.github/workflows/deploy-notify.yml`: `main`'e push sonrası `GET $SITE/api/version` 10 dk
-  boyunca yoklanır; `buildTime` iş akışı başlangıcından yeniyse "canlıda", değilse
+  boyunca yoklanır; `buildTime` dağıtılan commit'in zamanından yeniyse "canlıda", değilse
   "doğrulanamadı" mesajı Google Chat'e düşer. Yalnızca imaja giren dosyalar değiştiyse çalışır.
   Elle tetikleme (`workflow_dispatch`) yalnızca webhook testi gönderir.
 
@@ -339,5 +343,11 @@ npm run dev          # --watch ile
 npm test             # node --test "test/*.test.js"
 npm run create-admin -- <e-posta> <parola> [ad]
 npm run backup       # elle yedek
-node scripts/smoke.mjs   # uçtan uca HTTP duman testi (çalışan sunucuya karşı)
+# Uçtan uca HTTP duman testi: BOŞ bir veri klasörüyle açılmış sunucuya karşı çalışır.
+# Terminal 1:
+#   SKIP_DOTENV=1 DATA_DIR=$(mktemp -d) PORT=3199 APP_ORIGIN=http://localhost:3199 \
+#   APP_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))") \
+#   ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD=Admin12345 ENABLE_SCHEDULER=0 node src/server.js
+# Terminal 2 (SMOKE_BASE / SMOKE_ADMIN_EMAIL / SMOKE_ADMIN_PASSWORD ile değiştirilebilir):
+node scripts/smoke.mjs
 ```

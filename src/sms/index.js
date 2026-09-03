@@ -123,7 +123,9 @@ export const PROVIDERS = {
           }),
         });
         const data = await res.json().catch(() => null);
-        const code = Number(data?.response?.status?.code ?? res.status);
+        const rawCode = data?.response?.status?.code;
+        if (rawCode == null) return { ok: false, error: `İleti Merkezi beklenmeyen yanıt (HTTP ${res.status})` };
+        const code = Number(rawCode);
         if (code === 200) return { ok: true, ref: String(data?.response?.order?.id || '') };
         const desc = ILETIMERKEZI_ERRORS[code] || data?.response?.status?.message || `HTTP ${res.status}`;
         return { ok: false, error: `İleti Merkezi ${code}: ${desc}` };
@@ -177,13 +179,16 @@ export function senderProblem(providerName, sender) {
 export function resolveProvider(settings) {
   const name = providerOf(settings.sms_provider);
   let credentials = {};
+  let credentialsBroken = false;
   if (settings.sms_credentials) {
     const json = decrypt(settings.sms_credentials);
     if (json) {
       try { credentials = JSON.parse(json); } catch { credentials = {}; }
+    } else {
+      credentialsBroken = true; // APP_SECRET değişmiş: kayıtlı bilgiler çözülemiyor
     }
   }
-  return { name, provider: PROVIDERS[name], credentials, sender: String(settings.sms_sender || '').trim() };
+  return { name, provider: PROVIDERS[name], credentials, credentialsBroken, sender: String(settings.sms_sender || '').trim() };
 }
 
 /** Şablondaki {alan} yer tutucularını doldurur */
@@ -195,9 +200,12 @@ export const MAX_MESSAGE_LENGTH = 460;
 
 /** Tek bir SMS gönderir (yalnızca dispatch.js çağırır). Döner: { ok, ref, error, providerName } */
 export async function sendSms(settings, to, message) {
-  const { name, provider, credentials, sender } = resolveProvider(settings);
+  const { name, provider, credentials, credentialsBroken, sender } = resolveProvider(settings);
   const msg = String(message || '').trim().slice(0, MAX_MESSAGE_LENGTH);
   if (!msg) return { ok: false, error: 'Mesaj boş', providerName: name };
+  if (credentialsBroken && name !== 'console') {
+    return { ok: false, error: 'Kayıtlı sağlayıcı bilgileri çözülemedi (APP_SECRET değişmiş olabilir); Ayarlar sayfasından yeniden girin.', providerName: name };
+  }
   if (!/^905\d{9}$/.test(String(to))) return { ok: false, error: 'Geçersiz telefon numarası', providerName: name };
   const r = await provider.send({ to: String(to), message: msg, sender, credentials });
   return { ...r, providerName: name };

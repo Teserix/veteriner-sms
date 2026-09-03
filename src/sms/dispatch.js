@@ -3,17 +3,23 @@ import { smsLog } from '../db/tenant.js';
 import { sendSms } from './index.js';
 import { audit } from '../audit.js';
 import { log } from '../log.js';
+import { withLock } from '../lock.js';
 import { todayLocal, localDayStartIso, toInt, nowIso } from '../util.js';
 
 /**
  * Uygulamadaki TEK SMS çıkış noktası.
  * Sıra: opt-in kontrolü (test hariç) -> günlük tavan -> gönder -> sms_log.
  * Tavan aşımında gönderilmez ve sms_log'a yazılmaz; günde bir denetim satırı düşülür.
+ * dispatch() klinik başına kilit altında çalışır (eşzamanlı istekler tavanı aşamaz).
  *
  * dispatch({ clinicId, db, settings, kind: 'reminder'|'test'|'manual', to, message,
  *            owner?: {id,name,sms_opt_in}, pet?: {id,name}, reminderId?, sentBy })
  * => { ok, ref?, error?, skipped?: 'opt-out'|'cap', providerName?, logId? }
  */
+export function lockKey(clinicId) {
+  return 'sms:' + clinicId;
+}
+
 export function dailyCap(clinicId, settings) {
   const clinic = clinics.get(clinicId);
   const clinicCap = toInt(clinic?.sms_daily_cap, 300);
@@ -25,7 +31,8 @@ export function usedToday(db) {
   return smsLog.countSince(db, localDayStartIso(todayLocal()));
 }
 
-export async function dispatch({ clinicId, db, settings, kind = 'reminder', to, message, owner = null, pet = null, reminderId = null, sentBy = 'zamanlayici' }) {
+/** Kilitsiz sürüm: yalnızca zaten withLock(lockKey(clinicId)) içinden çağrılır (bkz. scheduler.js) */
+export async function dispatchUnlocked({ clinicId, db, settings, kind = 'reminder', to, message, owner = null, pet = null, reminderId = null, sentBy = 'zamanlayici' }) {
   if (kind !== 'test' && owner && !owner.sms_opt_in) {
     return { ok: false, skipped: 'opt-out', error: 'Hasta sahibi SMS almak istemiyor.' };
   }
@@ -61,4 +68,8 @@ export async function dispatch({ clinicId, db, settings, kind = 'reminder', to, 
   });
   log.info('sms', { clinicId, kind, to: log.maskPhone(to), ok: result.ok, provider: result.providerName });
   return { ...result, logId };
+}
+
+export function dispatch(args) {
+  return withLock(lockKey(args.clinicId), () => dispatchUnlocked(args));
 }

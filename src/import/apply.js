@@ -16,7 +16,7 @@ const petKey = (name) => String(name || '').toLocaleLowerCase('tr-TR').trim();
  * classifyRows(db, rows, mapping) -> satır başına karar.
  * Aynı telefon (veritabanında ya da dosyada daha önce) -> hayvan adı yeni ise add_pet, değilse skip_duplicate.
  */
-export function classifyRows(db, rows, mapping) {
+export function classifyRows(db, rows, mapping, lines = null) {
   const cell = (row, field) => {
     const idx = mapping[field];
     return idx == null || idx < 0 ? '' : String(row[idx] ?? '').trim();
@@ -26,7 +26,7 @@ export function classifyRows(db, rows, mapping) {
 
   rows.forEach((row, i) => {
     const r = {
-      rowNo: i + 2, // 1 = başlık satırı
+      rowNo: lines && lines[i] ? lines[i] : i + 2, // kaynak dosyadaki satır (1 = başlık)
       owner_name: trim(cell(row, 'owner_name'), 120),
       phoneRaw: cell(row, 'phone'),
       phone: null,
@@ -89,7 +89,7 @@ export function classifyRows(db, rows, mapping) {
     } else {
       entry.petKeys.add(key);
       r.action = 'add_pet';
-      notes.unshift(entry.fromDb ? `Mevcut sahibe eklenecek: ${entry.ownerName}` : `Aynı telefon satır ${entry.firstRow} ile birleştirilecek`);
+      notes.unshift(entry.fromDb ? `Mevcut sahibe eklenecek: ${entry.ownerName} (sahip adı korunur; boş e-posta/not dosyadan doldurulur)` : `Aynı telefon satır ${entry.firstRow} ile birleştirilecek`);
     }
     r.reason = notes.join('; ');
     out.push(r);
@@ -121,6 +121,7 @@ export function applyImport(db, classified, { batchToken = null } = {}) {
         const existing = owners.byPhone(db, r.phone);
         if (existing) {
           o = { id: existing.id, petKeys: new Set(pets.byOwner(db, existing.id).map((p) => petKey(p.name))) };
+          if (r.email || r.owner_notes) owners.fillEmpty(db, existing.id, { email: r.email, notes: r.owner_notes });
         } else {
           const id = owners.create(db, { name: r.owner_name, phone: r.phone, email: r.email, notes: r.owner_notes, sms_opt_in: 1, created_at: at, import_batch: batchToken });
           o = { id, petKeys: new Set() };

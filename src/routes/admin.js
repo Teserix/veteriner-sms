@@ -124,7 +124,7 @@ adminRouter.post('/klinik/:id/sifre-sifirla', async (req, res) => {
   detailView(res, c, { tempPassword: temp, tempFor: u });
 });
 
-/** Klinik silme: pasifleştir, oturumları kapat, dosyayı data/trash/ altına taşı (unlink yok) */
+/** Klinik silme: oturumları kapat, dosyayı data/trash/ altına taşı (unlink yok); klinik kaydı ve kullanıcı hesapları master.db'den silinir */
 adminRouter.post('/klinik/:id/sil', (req, res) => {
   const c = loadClinic(req, res);
   if (!c) return;

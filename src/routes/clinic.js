@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireRole } from '../auth.js';
 import { openTenant, getSettings, setSetting, owners, pets, reminders, smsLog } from '../db/tenant.js';
-import { PROVIDERS, providerOf, senderProblem } from '../sms/index.js';
+import { PROVIDERS, providerOf, senderProblem, resolveProvider } from '../sms/index.js';
 import { dispatch, dailyCap, usedToday } from '../sms/dispatch.js';
 import { limiters } from '../ratelimit.js';
 import { encrypt } from '../crypto.js';
@@ -13,7 +13,14 @@ import { todayLocal, addDays, normalizePhone, trim, toInt, monthRangeIso, withFl
  * istek başına BİR kez açar. Süper yönetici /admin'e, anonim kullanıcı /giris'e yönlenir.
  * Bu katmandan sonraki tüm router'lar req.db / req.settings'e güvenebilir.
  */
+const CLINIC_PREFIXES = ['/sahipler', '/hayvanlar', '/hatirlatmalar', '/sms', '/ayarlar', '/hizli-kayit', '/iceaktar', '/kullanicilar'];
+
+export function isClinicPath(p) {
+  return p === '/' || CLINIC_PREFIXES.some((x) => p === x || p.startsWith(x + '/'));
+}
+
 export function clinicScope(req, res, next) {
+  if (!isClinicPath(req.path)) return next(); // bilinmeyen yollar 404'e düşsün, yönlendirme olmasın
   if (!req.user) return res.redirect('/giris?next=' + encodeURIComponent(req.originalUrl.startsWith('/') ? req.originalUrl : '/'));
   if (!req.user.clinicId) return res.redirect('/admin');
   if (!req.db) {
@@ -48,6 +55,7 @@ clinicRouter.get('/', (req, res) => {
     due: reminders.due(db, today),
     tomorrow: reminders.dueOn(db, addDays(today, 1)),
     overdue: reminders.overdue(db, today),
+    failed: reminders.failedList(db),
     upcoming: reminders.upcoming(db, addDays(today, 1), addDays(today, 7)),
   });
 });
@@ -59,10 +67,12 @@ clinicRouter.get('/sms', (req, res) => {
 
 /* ---------- Ayarlar (yalnızca klinik yöneticisi) ---------- */
 clinicRouter.get('/ayarlar', requireRole('admin'), (req, res) => {
+  const resolved = resolveProvider(req.settings);
   res.render('settings', {
     title: 'Ayarlar',
     providers: PROVIDERS,
-    hasCredentials: Boolean(req.settings.sms_credentials),
+    hasCredentials: Boolean(req.settings.sms_credentials) && !resolved.credentialsBroken,
+    credentialsBroken: resolved.credentialsBroken,
     clinicCap: dailyCap(req.user.clinicId, { daily_sms_limit: '999999' }),
   });
 });

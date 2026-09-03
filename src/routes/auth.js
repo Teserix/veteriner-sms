@@ -43,7 +43,7 @@ authRouter.post('/giris', async (req, res) => {
     audit(req, 'login.fail', { meta: { email } });
     return fail('E-posta veya parola hatalı.');
   }
-  keys.forEach((k) => limiters.login.reset(k));
+  limiters.login.reset('email:' + email); // IP sayacı pencere sonunda kendiliğinden düşer (parola püskürtmeye karşı)
   createSession(res, req, u.id);
   req.user = { id: u.id, email: u.email, role: u.role, clinicId: u.clinic_id };
   audit(req, 'login.ok', { clinicId: u.clinic_id });
