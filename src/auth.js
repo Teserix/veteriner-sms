@@ -147,7 +147,8 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 /** Origin (yoksa Referer) uygulamanın kendi origin'i değilse 403 */
 export function originCheck(req, res, next) {
   if (SAFE_METHODS.has(req.method)) return next();
-  const expected = config.appOrigin || `${req.protocol}://${req.get('host')}`;
+  const allowed = new Set([config.appOrigin, ...(config.appOrigins || [])].filter(Boolean));
+  if (!allowed.size) allowed.add(`${req.protocol}://${req.get('host')}`);
   let origin = req.get('Origin');
   if (!origin) {
     const ref = req.get('Referer');
@@ -157,7 +158,7 @@ export function originCheck(req, res, next) {
     if (config.isProd) return res.status(403).render('error', { title: 'Güvenlik hatası', message: 'İsteğin kaynağı doğrulanamadı.' });
     return next();
   }
-  if (origin !== expected) {
+  if (!allowed.has(origin)) {
     return res.status(403).render('error', { title: 'Güvenlik hatası', message: 'İsteğin kaynağı doğrulanamadı.' });
   }
   next();

@@ -240,6 +240,40 @@ için: `/admin`'den kliniği yeniden oluşturun (yeni bir kimlik alır), uygulam
 `data/trash/` içindeki dosyayı `data/tenants/<yeni-id>.db` olarak kopyalayın ve başlatın.
 Bu klasör otomatik temizlenmez; KVKK/saklama politikanıza göre elle silin.
 
+## Ev sunucusu (Mac mini) kurulumu
+
+Uygulama bu depodan doğrudan `launchd` ile çalışır; Docker gerekmez. Dosyalar `deploy/mac-mini/` altındadır.
+
+```bash
+deploy/mac-mini/service.sh install    # LaunchAgent olarak kur ve başlat (kullanıcı oturumu açıkken çalışır)
+deploy/mac-mini/service.sh status     # durum + /api/version
+deploy/mac-mini/service.sh logs       # ~/Library/Logs/veteriner-sms.log
+sudo deploy/mac-mini/service.sh install   # LaunchDaemon: açılışta, kullanıcı girişi olmadan da çalışır (önerilen)
+```
+
+`.env` üretim değerleriyle doldurulmalı: `NODE_ENV=production`, `TRUST_PROXY=1`, rastgele `APP_SECRET`,
+`APP_ORIGIN` içinde dışarıdan kullanılan tüm adresler (virgülle).
+
+**Dışa açma, seçenek 1: Tailscale Funnel** (en hızlı; alan adı gerekmez, sertifika otomatik)
+
+```bash
+/Applications/Tailscale.app/Contents/MacOS/Tailscale funnel --bg 3000
+# -> https://<makine>.<tailnet>.ts.net/   (kapatmak: tailscale funnel --https=443 off)
+```
+
+**Dışa açma, seçenek 2: Cloudflare Tunnel** (kendi alan adınız, ör. vet.teserix.com)
+
+```bash
+brew install cloudflared
+cloudflared tunnel login                      # tarayıcıda Cloudflare hesabı, alan adını seçin (bir kez)
+deploy/mac-mini/setup-cloudflare.sh vet.teserix.com   # tünel + DNS kaydı + LaunchDaemon + APP_ORIGIN
+```
+
+Notlar:
+- Elektrik kesintisinden sonra kendiliğinden açılması için: `sudo pmset -a autorestart 1`.
+- Yedekler `data/backups/` altında; `data/` klasörünü Time Machine dışında da düzenli kopyalayın.
+- Port yönlendirme (router) gerekmez; her iki yöntem de dışarıya yalnızca HTTPS verir.
+
 ## Docker / Dokploy dağıtımı
 
 İmaj: iki aşamalı `node:24-bookworm-slim`, `node` kullanıcısıyla çalışır, `/app/data` volume,

@@ -136,7 +136,9 @@ function allowedHosts(req) {
   const hosts = new Set();
   const h = req.get('host');
   if (h) hosts.add(h);
-  if (config.appOrigin) { try { hosts.add(new URL(config.appOrigin).host); } catch { /* yoksay */ } }
+  for (const o of [config.appOrigin, ...(config.appOrigins || [])]) {
+    if (o) { try { hosts.add(new URL(o).host); } catch { /* yoksay */ } }
+  }
   return hosts;
 }
 

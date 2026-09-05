@@ -1,0 +1,9 @@
+# Cloudflare Tunnel yapılandırması (setup-cloudflare.sh bunu TUNNEL_ID ve HOSTNAME ile doldurur)
+tunnel: __TUNNEL_ID__
+credentials-file: __CREDENTIALS_FILE__
+ingress:
+  - hostname: __HOSTNAME__
+    service: http://localhost:3000
+    originRequest:
+      noTLSVerify: true
+  - service: http_status:404

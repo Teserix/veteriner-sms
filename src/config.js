@@ -42,12 +42,14 @@ if (appSecret.length < 32 || appSecret === PLACEHOLDER_SECRET) {
   console.warn('[UYARI] Geçici rastgele APP_SECRET üretildi; kaydedilen SMS hesap bilgileri yeniden başlatınca çözülemez.');
 }
 
-let appOrigin = (env.APP_ORIGIN || '').replace(/\/+$/, '');
-if (appOrigin) {
-  try { appOrigin = new URL(appOrigin).origin; } catch { fail('APP_ORIGIN geçerli bir URL olmalı (örn. https://vet.example.com).'); appOrigin = ''; }
-} else if (isProd) {
-  fail('APP_ORIGIN üretimde zorunludur (örn. https://vet.example.com).');
+// APP_ORIGIN: virgülle birden çok adres verilebilir (örn. Cloudflare Tunnel + Tailscale Funnel).
+// İlki "asıl" adrestir; hepsi Origin/Referer kontrolünde kabul edilir.
+const appOrigins = [];
+for (const raw of String(env.APP_ORIGIN || '').split(',').map((x) => x.trim()).filter(Boolean)) {
+  try { appOrigins.push(new URL(raw).origin); } catch { fail(`APP_ORIGIN geçerli bir URL olmalı (verilen: "${raw}", örn. https://vet.example.com).`); }
 }
+if (!appOrigins.length && isProd) fail('APP_ORIGIN üretimde zorunludur (örn. https://vet.example.com).');
+const appOrigin = appOrigins[0] || '';
 
 export const config = {
   port: num('PORT', 3000, { min: 1, max: 65535 }),
@@ -55,6 +57,7 @@ export const config = {
   trustProxy: env.TRUST_PROXY === '1' || env.TRUST_PROXY === 'true',
   appSecret,
   appOrigin,
+  appOrigins,
   dataDir: path.resolve(process.cwd(), env.DATA_DIR || './data'),
   adminEmail: env.ADMIN_EMAIL || '',
   adminPassword: env.ADMIN_PASSWORD || '',
