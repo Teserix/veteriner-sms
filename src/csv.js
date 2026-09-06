@@ -34,7 +34,7 @@ function parseRecords(text, delim, { strict = true } = {}) {
   const n = text.length;
   const endRow = () => { row.push(cell); rows.push(row); lines.push(recordStart); row = []; cell = ''; started = false; recordStart = lineNo; };
   for (let i = 0; i < n; i++) {
-    const c = text[i];
+    let c = text[i];
     if (!started) { started = true; recordStart = lineNo; }
     if (inQ) {
       if (c === '"') {

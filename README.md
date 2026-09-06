@@ -29,7 +29,7 @@ data/                         (DATA_DIR)
 ```
 
 Klinik verileri birbirinden dosya düzeyinde ayrıdır: bir kullanıcı yalnızca kendi kliniğinin
-dosyasını açabilir (`clinicScope`), süper yönetici klinik verisine giremez.
+dosyasını açabilir (`clinicScope`). Süper yönetici rutin kullanımda klinik verisine giremez; yalnızca kurtarma amacıyla klinik kullanıcılarına geçici parola üretebilir ve bu işlem denetim günlüğüne IP ile yazılır.
 
 ## Gereksinimler
 
@@ -330,7 +330,8 @@ Gerekli depo ayarları (Settings → Secrets and variables → Actions):
 ## Güvenlik özeti
 
 - **Kiracı yalıtımı:** her klinik ayrı dosya; istek başına yalnızca kullanıcının kendi kliniği
-  açılır (`clinicScope`). Süper yönetici klinik verisi göremez, yalnızca `master.db` yönetir.
+  açılır (`clinicScope`). Süper yönetici klinik hasta verisi göremez, yalnızca `master.db`
+  yönetir; kurtarma amaçlı parola sıfırlama yetkisi vardır ve denetim günlüğüne düşer.
   Veri dosyaları `umask 077` ile oluşturulur.
 - **Şifreli sağlayıcı bilgileri:** Netgsm/İleti Merkezi/Twilio hesap bilgileri `APP_SECRET`'tan
   türetilen anahtarla AES-256-GCM. **`APP_SECRET` değişirse** kayıtlı bilgiler çözülemez

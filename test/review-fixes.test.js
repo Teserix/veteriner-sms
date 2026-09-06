@@ -33,6 +33,13 @@ test('csv: virgüllü dosyada hücre içi noktalı virgüller ayracı yanıltmaz
   assert.equal(r.rows[0][2], 'karma; kuduz; ic parazit');
 });
 
+test('csv: tırnak içinde CRLF satır sonu olan hücre çökmez (Excel adres/not sütunu)', () => {
+  const r = parseCsv(enc('Ad;Not\r\nAli;"iki\r\nsatir"\r\nVeli;x\r\n'));
+  assert.equal(r.rows.length, 2);
+  assert.equal(r.rows[0][1], 'iki\r\nsatir');
+  assert.deepEqual(r.lines, [2, 4]);
+});
+
 test('csv: satır numaraları boş satır ve çok satırlı hücreyi hesaba katar', () => {
   const r = parseCsv(enc('Ad;Tel;Not\nAli;0532;"iki\nsatir"\n\nVeli;0533;x\n'));
   assert.deepEqual(r.lines, [2, 5]);
