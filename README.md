@@ -378,6 +378,11 @@ npm run dev          # --watch ile
 npm test             # node --test "test/*.test.js"
 npm run create-admin -- <e-posta> <parola> [ad]
 npm run backup       # elle yedek
+# Demo verisi: bir kliniğe 20 sahip / 24 hayvan / 33 hatırlatma / SMS geçmişi ekler (mevcut kayıtları korur),
+# telefonlar atanmamış 0515/0516 aralığındandır ve o klinikte otomatik gönderimi kapatır.
+# --personel ile personel@demo.local / Demo12345 hesabı da açar.
+node scripts/seed-demo.js <klinik-id> --personel
+
 # Uçtan uca HTTP duman testi: BOŞ bir veri klasörüyle açılmış sunucuya karşı çalışır.
 # Terminal 1:
 #   SKIP_DOTENV=1 DATA_DIR=$(mktemp -d) PORT=3199 APP_ORIGIN=http://localhost:3199 \
