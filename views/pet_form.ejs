@@ -5,12 +5,12 @@
   <form method="post" action="<%= pet ? '/hayvanlar/' + pet.id + '/duzenle' : '/sahipler/' + owner.id + '/hayvan/yeni' %>">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
     <div class="form-grid">
-      <div><label for="name">Ad *</label><input id="name" type="text" name="name" required maxlength="80" value="<%= form.name || '' %>"></div>
+      <div><label for="name">Ad *</label><input id="name" type="text" name="name" required maxlength="80" autocapitalize="words" autocomplete="off" enterkeyhint="next" value="<%= form.name || '' %>"></div>
       <div><label for="species">Tür</label>
         <select id="species" name="species">
           <% for (const s of SPECIES) { %><option value="<%= s %>" <%= form.species === s ? 'selected' : '' %>><%= s %></option><% } %>
         </select></div>
-      <div><label for="breed">Irk</label><input id="breed" type="text" name="breed" maxlength="80" value="<%= form.breed || '' %>"></div>
+      <div><label for="breed">Irk</label><input id="breed" type="text" name="breed" maxlength="80" autocapitalize="words" autocomplete="off" enterkeyhint="next" value="<%= form.breed || '' %>"></div>
       <div><label for="sex">Cinsiyet</label>
         <select id="sex" name="sex">
           <option value="" <%= !form.sex ? 'selected' : '' %>>Belirtilmedi</option>

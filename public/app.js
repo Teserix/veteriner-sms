@@ -1,4 +1,4 @@
-// Küçük yardımcılar: onay isteyen formlar, şablon önizleme, sağlayıcı alanları
+// Küçük yardımcılar: onay isteyen formlar, şablon önizleme, sağlayıcı alanları, mobil menü
 document.addEventListener('submit', function (e) {
   var f = e.target;
   if (f && f.dataset && f.dataset.confirm) {
@@ -35,4 +35,47 @@ document.addEventListener('submit', function (e) {
   }
   sel.addEventListener('change', update);
   update();
+})();
+
+// Mobil gezinme: hamburger düğmesi
+(function () {
+  var bar = document.querySelector('.topbar');
+  var toggle = bar && bar.querySelector('.nav-toggle');
+  var nav = document.getElementById('site-nav');
+  if (!bar || !toggle || !nav) return;
+
+  var wide = window.matchMedia('(min-width: 861px)');
+
+  function isOpen() { return bar.classList.contains('nav-open'); }
+  function setOpen(open) {
+    bar.classList.toggle('nav-open', open);
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  toggle.addEventListener('click', function () { setOpen(!isOpen()); });
+
+  document.addEventListener('click', function (e) {
+    if (!isOpen()) return;
+    var t = e.target;
+    if (!t || typeof t.closest !== 'function') return;
+    if (t.closest('.nav-toggle')) return;
+    if (nav.contains(t)) {
+      // bağlantıya ya da düğmeye dokunulduysa menüyü kapat
+      if (t.closest('a') || t.closest('button')) setOpen(false);
+      return;
+    }
+    setOpen(false);
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' && e.key !== 'Esc') return;
+    if (!isOpen()) return;
+    setOpen(false);
+    toggle.focus();
+  });
+
+  function syncWidth() { if (wide.matches) setOpen(false); }
+  if (typeof wide.addEventListener === 'function') wide.addEventListener('change', syncWidth);
+  else if (typeof wide.addListener === 'function') wide.addListener(syncWidth);
+  syncWidth();
 })();

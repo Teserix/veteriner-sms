@@ -24,8 +24,11 @@
   </div>
 </div>
 <div class="card">
+  <p class="small muted table-hint">Tabloyu yana kaydırarak tüm sütunları görebilirsiniz.</p>
+  <div class="table-wrap">
   <table class="import-table">
-    <tr><th>Satır</th><th>Durum</th><th>Sahip</th><th>Telefon</th><th>E-posta</th><th>Hayvan</th><th>Tür</th><th>Irk</th><th>Cinsiyet</th><th>Doğum</th><th>Açıklama</th></tr>
+    <thead><tr><th>Satır</th><th>Durum</th><th>Sahip</th><th>Telefon</th><th>E-posta</th><th>Hayvan</th><th>Tür</th><th>Irk</th><th>Cinsiyet</th><th>Doğum</th><th>Açıklama</th></tr></thead>
+    <tbody>
     <% for (const r of list) { %>
     <tr>
       <td class="muted"><%= r.rowNo %></td>
@@ -41,6 +44,8 @@
       <td class="small <%= r.action === 'error' ? '' : 'muted' %>"><%= r.reason %></td>
     </tr>
     <% } %>
+    </tbody>
   </table>
+  </div>
 </div>
 <%- include('partials/footer') %>

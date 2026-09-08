@@ -26,12 +26,15 @@
 </div>
 <div class="card">
   <h2 class="mt0">İlk <%= preview.length %> satır</h2>
-  <div class="preview-box">
+  <p class="small muted table-hint">Tabloyu yana kaydırarak tüm sütunları görebilirsiniz.</p>
+  <div class="preview-box table-wrap">
     <table class="import-table">
-      <tr><th>#</th><% for (const h of batch.headers) { %><th><%= h %></th><% } %></tr>
+      <thead><tr><th>#</th><% for (const h of batch.headers) { %><th><%= h %></th><% } %></tr></thead>
+      <tbody>
       <% preview.forEach((r, i) => { %>
       <tr><td class="muted"><%= i + 2 %></td><% batch.headers.forEach((h, j) => { %><td><%= r[j] %></td><% }) %></tr>
       <% }) %>
+      </tbody>
     </table>
   </div>
 </div>

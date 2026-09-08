@@ -7,15 +7,16 @@
 </div>
 <% } %>
 <div class="card">
-  <table>
-    <tr><th>Ad</th><th>E-posta</th><th>Rol</th><th>Durum</th><th>Son giriş</th><th></th></tr>
+  <table class="cards">
+    <thead><tr><th>Ad</th><th>E-posta</th><th>Rol</th><th>Durum</th><th>Son giriş</th><th><span class="visually-hidden">İşlemler</span></th></tr></thead>
+    <tbody>
     <% for (const u of list) { %>
     <tr>
-      <td><%= u.name %><% if (u.id === user.id) { %> <span class="small muted">(siz)</span><% } %><% if (u.must_change_password) { %><br><span class="small muted">parola değişimi bekliyor</span><% } %></td>
-      <td><%= u.email %></td>
-      <td><%= u.role === 'admin' ? 'Yönetici' : 'Personel' %></td>
-      <td><% if (u.active) { %><span class="badge ok">Aktif</span><% } else { %><span class="badge cancelled">Pasif</span><% } %></td>
-      <td class="small"><%= formatDateTime(u.last_login_at) || '—' %></td>
+      <td data-label="Ad"><%= u.name %><% if (u.id === user.id) { %> <span class="small muted">(siz)</span><% } %><% if (u.must_change_password) { %><br><span class="small muted">parola değişimi bekliyor</span><% } %></td>
+      <td data-label="E-posta"><%= u.email %></td>
+      <td data-label="Rol"><%= u.role === 'admin' ? 'Yönetici' : 'Personel' %></td>
+      <td data-label="Durum"><% if (u.active) { %><span class="badge ok">Aktif</span><% } else { %><span class="badge cancelled">Pasif</span><% } %></td>
+      <td class="small" data-label="Son giriş"><%= formatDateTime(u.last_login_at) || '—' %></td>
       <td class="actions">
         <% if (u.id !== user.id) { %>
           <form method="post" action="/kullanicilar/<%= u.id %>/sifre-sifirla" data-confirm="Geçici parola üretilsin mi? Kullanıcının mevcut oturumları kapanır."><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn sm secondary" type="submit">Parola sıfırla</button></form>
@@ -26,6 +27,7 @@
       </td>
     </tr>
     <% } %>
+    </tbody>
   </table>
 </div>
 
@@ -35,8 +37,8 @@
   <form method="post" action="/kullanicilar">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
     <div class="form-grid">
-      <div><label for="name">Ad Soyad *</label><input id="name" type="text" name="name" required maxlength="80" value="<%= form.name || '' %>"></div>
-      <div><label for="email">E-posta *</label><input id="email" type="email" name="email" required maxlength="120" value="<%= form.email || '' %>"></div>
+      <div><label for="name">Ad Soyad *</label><input id="name" type="text" name="name" required maxlength="80" autocapitalize="words" autocomplete="off" value="<%= form.name || '' %>"></div>
+      <div><label for="email">E-posta *</label><input id="email" type="email" name="email" required maxlength="120" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" value="<%= form.email || '' %>"></div>
       <div><label for="password">Geçici parola *</label><input id="password" type="password" name="password" required autocomplete="new-password"><div class="help">En az 8 karakter, harf ve rakam. Kullanıcı ilk girişte değiştirir.</div></div>
       <div><label for="role">Rol</label>
         <select id="role" name="role">

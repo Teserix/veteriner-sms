@@ -16,15 +16,16 @@
 
 <%
   const rowsTable = (rows, showSend) => { %>
-  <table>
-    <tr><th>Tarih</th><th>Sahip</th><th>Hayvan</th><th>Hatırlatma</th><th>Durum</th><% if (showSend) { %><th></th><% } %></tr>
+  <table class="cards">
+    <thead><tr><th>Tarih</th><th>Sahip</th><th>Hayvan</th><th>Hatırlatma</th><th>Durum</th><% if (showSend) { %><th><span class="visually-hidden">İşlemler</span></th><% } %></tr></thead>
+    <tbody>
     <% for (const r of rows) { %>
     <tr>
-      <td><%= formatDate(r.due_date) %></td>
-      <td><a href="/sahipler/<%= r.owner_id %>"><%= r.owner_name %></a><br><span class="small muted mono"><%= formatPhone(r.owner_phone) %></span></td>
-      <td><%= r.pet_name %></td>
-      <td><%= r.title %></td>
-      <td><% if (!r.sms_opt_in) { %><span class="badge cancelled">SMS istemiyor</span><% } else if (r.last_error) { %><span class="badge failed" title="<%= r.last_error %>">Hata (<%= r.attempts %>)</span><% } else { %><span class="badge <%= r.status %>"><%= STATUS_LABELS[r.status] %></span><% } %></td>
+      <td data-label="Tarih"><%= formatDate(r.due_date) %></td>
+      <td data-label="Sahip"><a href="/sahipler/<%= r.owner_id %>"><%= r.owner_name %></a><br><span class="small muted mono"><%= formatPhone(r.owner_phone) %></span></td>
+      <td data-label="Hayvan"><%= r.pet_name %></td>
+      <td data-label="Hatırlatma"><%= r.title %></td>
+      <td data-label="Durum"><% if (!r.sms_opt_in) { %><span class="badge cancelled">SMS istemiyor</span><% } else if (r.last_error) { %><span class="badge failed" title="<%= r.last_error %>">Hata (<%= r.attempts %>)</span><% } else { %><span class="badge <%= r.status %>"><%= STATUS_LABELS[r.status] %></span><% } %></td>
       <% if (showSend) { %>
       <td class="actions">
         <% if (r.sms_opt_in && (r.status === 'pending' || r.status === 'failed')) { %>
@@ -34,6 +35,7 @@
       <% } %>
     </tr>
     <% } %>
+    </tbody>
   </table>
 <% }; %>
 

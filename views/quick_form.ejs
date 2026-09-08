@@ -7,18 +7,18 @@
     <input type="hidden" name="_csrf" value="<%= csrf %>">
     <h2 class="mt0">Hasta sahibi</h2>
     <div class="form-grid">
-      <div><label for="owner_name">Ad Soyad *</label><input id="owner_name" type="text" name="owner_name" required maxlength="120" value="<%= form.owner_name || '' %>" autofocus></div>
-      <div><label for="phone">Cep telefonu *</label><input id="phone" type="tel" name="phone" required placeholder="05xx xxx xx xx" value="<%= form.phone || '' %>"></div>
-      <div><label for="email">E-posta</label><input id="email" type="email" name="email" maxlength="120" value="<%= form.email || '' %>"></div>
+      <div><label for="owner_name">Ad Soyad *</label><input id="owner_name" type="text" name="owner_name" required maxlength="120" autocapitalize="words" autocomplete="off" enterkeyhint="next" value="<%= form.owner_name || '' %>" autofocus></div>
+      <div><label for="phone">Cep telefonu *</label><input id="phone" type="tel" name="phone" required inputmode="tel" autocomplete="off" enterkeyhint="next" placeholder="05xx xxx xx xx" value="<%= form.phone || '' %>"></div>
+      <div><label for="email">E-posta</label><input id="email" type="email" name="email" maxlength="120" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="next" value="<%= form.email || '' %>"></div>
     </div>
     <label class="checkbox"><input type="checkbox" name="sms_opt_in" value="1" <%= String(form.sms_opt_in) === '0' ? '' : 'checked' %>> SMS hatırlatması gönderilsin</label>
 
     <h2>Hayvan</h2>
     <div class="form-grid">
-      <div><label for="pet_name">Ad *</label><input id="pet_name" type="text" name="pet_name" required maxlength="80" value="<%= form.pet_name || '' %>"></div>
+      <div><label for="pet_name">Ad *</label><input id="pet_name" type="text" name="pet_name" required maxlength="80" autocapitalize="words" autocomplete="off" enterkeyhint="next" value="<%= form.pet_name || '' %>"></div>
       <div><label for="species">Tür</label>
         <select id="species" name="species"><% for (const s of SPECIES) { %><option value="<%= s %>" <%= form.species === s ? 'selected' : '' %>><%= s %></option><% } %></select></div>
-      <div><label for="breed">Irk</label><input id="breed" type="text" name="breed" maxlength="80" value="<%= form.breed || '' %>"></div>
+      <div><label for="breed">Irk</label><input id="breed" type="text" name="breed" maxlength="80" autocapitalize="words" autocomplete="off" enterkeyhint="next" value="<%= form.breed || '' %>"></div>
       <div><label for="sex">Cinsiyet</label>
         <select id="sex" name="sex">
           <option value="">Belirtilmedi</option>
@@ -33,10 +33,10 @@
     <div class="form-grid">
       <div><label for="type">Tür</label>
         <select id="type" name="type"><% for (const [k, v] of Object.entries(REMINDER_TYPES)) { %><option value="<%= k %>" <%= (form.type || 'asi') === k ? 'selected' : '' %>><%= v %></option><% } %></select></div>
-      <div><label for="title">Başlık</label><input id="title" type="text" name="title" maxlength="80" placeholder="örn. Kuduz aşısı" value="<%= form.title || '' %>"></div>
+      <div><label for="title">Başlık</label><input id="title" type="text" name="title" maxlength="80" autocapitalize="sentences" autocomplete="off" enterkeyhint="next" placeholder="örn. Kuduz aşısı" value="<%= form.title || '' %>"></div>
       <div><label for="due_date">Randevu tarihi</label><input id="due_date" type="date" name="due_date" value="<%= form.due_date || '' %>"></div>
-      <div><label for="notify_days_before">Kaç gün önce SMS</label><input id="notify_days_before" type="number" name="notify_days_before" min="0" max="60" value="<%= form.notify_days_before ?? 1 %>"></div>
-      <div><label for="repeat_days">Tekrar (gün)</label><input id="repeat_days" type="number" name="repeat_days" min="0" max="3650" placeholder="boş = tekrar yok" value="<%= form.repeat_days || '' %>"></div>
+      <div><label for="notify_days_before">Kaç gün önce SMS</label><input id="notify_days_before" type="number" name="notify_days_before" inputmode="numeric" min="0" max="60" value="<%= form.notify_days_before ?? 1 %>"></div>
+      <div><label for="repeat_days">Tekrar (gün)</label><input id="repeat_days" type="number" name="repeat_days" inputmode="numeric" min="0" max="3650" placeholder="boş = tekrar yok" value="<%= form.repeat_days || '' %>"></div>
     </div>
     <div class="form-actions">
       <button class="btn" type="submit">Kaydet</button>

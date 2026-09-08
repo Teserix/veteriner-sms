@@ -13,16 +13,17 @@
 <div class="card">
   <p class="small muted">Yeni hatırlatma eklemek için hasta sahibi sayfasından ilgili hayvanın yanındaki "+ Hatırlatma" düğmesini kullanın.</p>
   <% if (!list.length) { %><div class="empty">Kayıt yok.</div><% } else { %>
-  <table>
-    <tr><th>Tarih</th><th>Sahip</th><th>Hayvan</th><th>Hatırlatma</th><th>Bildirim</th><th>Durum</th><th></th></tr>
+  <table class="cards">
+    <thead><tr><th>Tarih</th><th>Sahip</th><th>Hayvan</th><th>Hatırlatma</th><th>Bildirim</th><th>Durum</th><th><span class="visually-hidden">İşlemler</span></th></tr></thead>
+    <tbody>
     <% for (const r of list) { %>
     <tr>
-      <td><%= formatDate(r.due_date) %></td>
-      <td><a href="/sahipler/<%= r.owner_id %>"><%= r.owner_name %></a><br><span class="small muted mono"><%= formatPhone(r.owner_phone) %></span></td>
-      <td><%= r.pet_name %></td>
-      <td><%= r.title %> <span class="small muted">(<%= REMINDER_TYPES[r.type] || r.type %>)</span></td>
-      <td class="small"><%= r.notify_days_before %> gün önce<% if (r.sent_at) { %><br><span class="muted"><%= formatDateTime(r.sent_at) %></span><% } %></td>
-      <td><span class="badge <%= r.status %>"><%= STATUS_LABELS[r.status] %></span><% if (r.last_error) { %><br><span class="small muted"><%= r.last_error %></span><% } %></td>
+      <td data-label="Tarih"><%= formatDate(r.due_date) %></td>
+      <td data-label="Sahip"><a href="/sahipler/<%= r.owner_id %>"><%= r.owner_name %></a><br><span class="small muted mono"><%= formatPhone(r.owner_phone) %></span></td>
+      <td data-label="Hayvan"><%= r.pet_name %></td>
+      <td data-label="Hatırlatma"><%= r.title %> <span class="small muted">(<%= REMINDER_TYPES[r.type] || r.type %>)</span></td>
+      <td class="small" data-label="Bildirim"><%= r.notify_days_before %> gün önce<% if (r.sent_at) { %><br><span class="muted"><%= formatDateTime(r.sent_at) %></span><% } %></td>
+      <td data-label="Durum"><span class="badge <%= r.status %>"><%= STATUS_LABELS[r.status] %></span><% if (r.last_error) { %><br><span class="small muted"><%= r.last_error %></span><% } %></td>
       <td class="actions">
         <% if (r.status === 'pending' || r.status === 'failed') { %>
           <form method="post" action="/hatirlatmalar/<%= r.id %>/gonder"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn sm" type="submit">SMS gönder</button></form>
@@ -34,6 +35,7 @@
       </td>
     </tr>
     <% } %>
+    </tbody>
   </table>
   <% } %>
 </div>

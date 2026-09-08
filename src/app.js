@@ -35,7 +35,7 @@ export function createApp() {
 
   /* ---------- Güvenlik başlıkları ---------- */
   app.use((req, res, next) => {
-    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'");
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Referrer-Policy', 'same-origin');
@@ -45,8 +45,34 @@ export function createApp() {
     next();
   });
 
-  app.use('/static', express.static(path.join(__dirname, '..', 'public'), { maxAge: '1h' }));
+  const publicDir = path.join(__dirname, '..', 'public');
+  app.use('/static', express.static(publicDir, { maxAge: '1h' }));
   app.use('/api', opsRouter);
+
+  /* ---------- PWA: kök kapsamda servis edilmesi gereken dosyalar ----------
+   * Service worker'ın "/" kapsamını yönetebilmesi için /sw.js kökten
+   * sunulmalı; manifest de giriş yapılmadan okunabilmeli. Bu yüzden bu
+   * rotalar oturum/CSRF ara katmanlarından ÖNCE, /api gibi tanımlanır.
+   * Dosya adları sabittir; kullanıcı girdisiyle yol birleştirme yoktur.
+   */
+  const sendPublicFile = (res, next, name, headers) =>
+    res.sendFile(path.join(publicDir, name), { headers }, (err) => {
+      if (err && !res.headersSent) next(err);
+    });
+
+  app.get('/sw.js', (req, res, next) => sendPublicFile(res, next, 'sw.js', {
+    'Content-Type': 'application/javascript; charset=utf-8',
+    'Service-Worker-Allowed': '/',
+    // Güncellemelerin yayılabilmesi için her zaman sunucuya sorulur
+    'Cache-Control': 'no-cache',
+  }));
+
+  app.get('/manifest.webmanifest', (req, res, next) => sendPublicFile(res, next, 'manifest.webmanifest', {
+    'Content-Type': 'application/manifest+json; charset=utf-8',
+    'Cache-Control': 'public, max-age=3600',
+  }));
+
+  app.get('/favicon.ico', (req, res) => res.redirect(302, '/static/icons/favicon.svg'));
 
   app.use(express.urlencoded({ extended: false, limit: '64kb', parameterLimit: 100 }));
   // Express 5: gövde ayrıştırılmadıysa req.body undefined kalır; form olmayan POST'larda 500 yerine boş nesne

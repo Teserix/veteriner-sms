@@ -7,16 +7,16 @@
     <div class="form-grid">
       <div>
         <label for="name">Ad Soyad *</label>
-        <input id="name" type="text" name="name" required maxlength="120" value="<%= form.name || '' %>">
+        <input id="name" type="text" name="name" required maxlength="120" autocapitalize="words" autocomplete="off" enterkeyhint="next" value="<%= form.name || '' %>">
       </div>
       <div>
         <label for="phone">Cep telefonu *</label>
-        <input id="phone" type="tel" name="phone" required placeholder="05xx xxx xx xx" value="<%= form.phone || '' %>">
+        <input id="phone" type="tel" name="phone" required inputmode="tel" autocomplete="off" enterkeyhint="next" placeholder="05xx xxx xx xx" value="<%= form.phone || '' %>">
         <div class="help">SMS bu numaraya gider. 05xx ile başlayan Türkiye numarası.</div>
       </div>
       <div>
         <label for="email">E-posta</label>
-        <input id="email" type="email" name="email" maxlength="120" value="<%= form.email || '' %>">
+        <input id="email" type="email" name="email" maxlength="120" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="next" value="<%= form.email || '' %>">
       </div>
     </div>
     <label for="notes">Not</label>

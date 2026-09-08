@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Veteriner SMS">
+  <title>Veteriner SMS</title>
+  <rect width="512" height="512" rx="96" ry="96" fill="#0f766e"/>
+  <g fill="#ffffff" transform="translate(256 256) scale(1.15) translate(-256 -272.5)">
+    <ellipse cx="112" cy="252" rx="46" ry="58" transform="rotate(-28 112 252)"/>
+    <ellipse cx="196" cy="160" rx="46" ry="62" transform="rotate(-10 196 160)"/>
+    <ellipse cx="316" cy="160" rx="46" ry="62" transform="rotate(10 316 160)"/>
+    <ellipse cx="400" cy="252" rx="46" ry="58" transform="rotate(28 400 252)"/>
+    <path d="M 256,258 C 316,258 366,292 372,342 C 378,392 340,438 292,446 C 272,449 264,438 256,438 C 248,438 240,449 220,446 C 172,438 134,392 140,342 C 146,292 196,258 256,258 Z"/>
+  </g>
+</svg>

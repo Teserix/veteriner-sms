@@ -17,8 +17,8 @@
     <input type="hidden" name="_csrf" value="<%= csrf %>">
     <div class="form-grid">
       <div><label for="name">Klinik adı</label><input id="name" type="text" name="name" required maxlength="80" value="<%= clinic.name %>"></div>
-      <div><label for="phone">Telefon</label><input id="phone" type="text" name="phone" maxlength="30" value="<%= clinic.phone || '' %>"></div>
-      <div><label for="sms_daily_cap">Günlük SMS tavanı</label><input id="sms_daily_cap" type="number" name="sms_daily_cap" min="0" max="5000" value="<%= clinic.sms_daily_cap %>"><div class="help">Klinik kendi ayarında bunun üstüne çıkamaz.</div></div>
+      <div><label for="phone">Telefon</label><input id="phone" type="tel" name="phone" maxlength="30" inputmode="tel" autocomplete="off" value="<%= clinic.phone || '' %>"></div>
+      <div><label for="sms_daily_cap">Günlük SMS tavanı</label><input id="sms_daily_cap" type="number" name="sms_daily_cap" inputmode="numeric" min="0" max="5000" value="<%= clinic.sms_daily_cap %>"><div class="help">Klinik kendi ayarında bunun üstüne çıkamaz.</div></div>
     </div>
     <p class="small muted mono">Kimlik: <%= clinic.id %> · Dosya: tenants/<%= clinic.id %>.db · Oluşturma: <%= formatDateTime(clinic.created_at) %></p>
     <div class="form-actions"><button class="btn" type="submit">Kaydet</button></div>
@@ -27,20 +27,22 @@
 
 <h2>Kullanıcılar</h2>
 <div class="card">
-  <table>
-    <tr><th>Ad</th><th>E-posta</th><th>Rol</th><th>Durum</th><th>Son giriş</th><th></th></tr>
+  <table class="cards">
+    <thead><tr><th>Ad</th><th>E-posta</th><th>Rol</th><th>Durum</th><th>Son giriş</th><th><span class="visually-hidden">İşlemler</span></th></tr></thead>
+    <tbody>
     <% for (const u of userList) { %>
     <tr>
-      <td><%= u.name %></td>
-      <td><%= u.email %></td>
-      <td><%= u.role === 'admin' ? 'Yönetici' : 'Personel' %></td>
-      <td><% if (u.active) { %><span class="badge ok">Aktif</span><% } else { %><span class="badge cancelled">Pasif</span><% } %></td>
-      <td class="small"><%= formatDateTime(u.last_login_at) || '—' %></td>
+      <td data-label="Ad"><%= u.name %></td>
+      <td data-label="E-posta"><%= u.email %></td>
+      <td data-label="Rol"><%= u.role === 'admin' ? 'Yönetici' : 'Personel' %></td>
+      <td data-label="Durum"><% if (u.active) { %><span class="badge ok">Aktif</span><% } else { %><span class="badge cancelled">Pasif</span><% } %></td>
+      <td class="small" data-label="Son giriş"><%= formatDateTime(u.last_login_at) || '—' %></td>
       <td class="actions">
         <form method="post" action="/admin/klinik/<%= clinic.id %>/sifre-sifirla" data-confirm="Geçici parola üretilsin mi?"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="user_id" value="<%= u.id %>"><button class="btn sm secondary" type="submit">Parola sıfırla</button></form>
       </td>
     </tr>
     <% } %>
+    </tbody>
   </table>
 </div>
 

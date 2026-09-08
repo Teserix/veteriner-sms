@@ -1,0 +1,59 @@
+{
+  "id": "/",
+  "name": "Veteriner SMS",
+  "short_name": "Vet SMS",
+  "description": "Veteriner klinikleri için aşı ve kontrol hatırlatmalarını planlayan, hasta sahiplerine otomatik SMS gönderen yönetim uygulaması.",
+  "lang": "tr",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#f4f6f8",
+  "theme_color": "#0f766e",
+  "categories": ["medical", "business", "productivity"],
+  "icons": [
+    {
+      "src": "/static/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Hızlı kayıt",
+      "short_name": "Hızlı kayıt",
+      "description": "Hasta sahibi, hayvan ve hatırlatmayı tek ekranda kaydet",
+      "url": "/hizli-kayit",
+      "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Hatırlatmalar",
+      "short_name": "Hatırlatmalar",
+      "description": "Yaklaşan ve geçmiş hatırlatmaları görüntüle",
+      "url": "/hatirlatmalar",
+      "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Hasta Sahipleri",
+      "short_name": "Sahipler",
+      "description": "Hasta sahibi ve hayvan kayıtlarını ara",
+      "url": "/sahipler",
+      "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}

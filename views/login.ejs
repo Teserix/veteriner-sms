@@ -7,9 +7,9 @@
       <input type="hidden" name="_csrf" value="<%= preToken %>">
       <input type="hidden" name="next" value="<%= next || '/' %>">
       <label for="email">E-posta</label>
-      <input id="email" type="email" name="email" required autocomplete="username" autofocus value="<%= email || '' %>">
+      <input id="email" type="email" name="email" required autocomplete="username" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next" autofocus value="<%= email || '' %>">
       <label for="password">Parola</label>
-      <input id="password" type="password" name="password" required autocomplete="current-password">
+      <input id="password" type="password" name="password" required autocomplete="current-password" enterkeyhint="go">
       <div class="form-actions"><button class="btn" type="submit">Giriş yap</button></div>
     </form>
   </div>

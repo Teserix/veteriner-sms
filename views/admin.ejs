@@ -2,21 +2,23 @@
 <h1>Klinikler</h1>
 <div class="card">
   <% if (!list.length) { %><div class="empty">Henüz klinik yok. Aşağıdan ilk kliniği oluşturun.</div><% } else { %>
-  <table>
-    <tr><th>Klinik</th><th>Telefon</th><th>Kullanıcı</th><th>Günlük tavan</th><th>Durum</th><th></th></tr>
+  <table class="cards">
+    <thead><tr><th>Klinik</th><th>Telefon</th><th>Kullanıcı</th><th>Günlük tavan</th><th>Durum</th><th><span class="visually-hidden">İşlemler</span></th></tr></thead>
+    <tbody>
     <% for (const c of list) { %>
     <tr>
-      <td><a href="/admin/klinik/<%= c.id %>"><strong><%= c.name %></strong></a><br><span class="small muted mono">tenants/<%= c.id %>.db</span></td>
-      <td><%= c.phone || '' %></td>
-      <td><%= c.user_count %></td>
-      <td><%= c.sms_daily_cap %></td>
-      <td><% if (c.active) { %><span class="badge ok">Aktif</span><% } else { %><span class="badge cancelled">Pasif</span><% } %></td>
+      <td data-label="Klinik"><a href="/admin/klinik/<%= c.id %>"><strong><%= c.name %></strong></a><br><span class="small muted mono">tenants/<%= c.id %>.db</span></td>
+      <td data-label="Telefon"><%= c.phone || '' %></td>
+      <td data-label="Kullanıcı"><%= c.user_count %></td>
+      <td data-label="Günlük tavan"><%= c.sms_daily_cap %></td>
+      <td data-label="Durum"><% if (c.active) { %><span class="badge ok">Aktif</span><% } else { %><span class="badge cancelled">Pasif</span><% } %></td>
       <td class="actions">
         <a class="btn sm secondary" href="/admin/klinik/<%= c.id %>">Detay</a>
         <form method="post" action="/admin/klinik/<%= c.id %>/durum"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="active" value="<%= c.active ? 0 : 1 %>"><button class="btn sm secondary" type="submit"><%= c.active ? 'Pasifleştir' : 'Aktifleştir' %></button></form>
       </td>
     </tr>
     <% } %>
+    </tbody>
   </table>
   <% } %>
 </div>
@@ -28,9 +30,9 @@
     <input type="hidden" name="_csrf" value="<%= csrf %>">
     <div class="form-grid">
       <div><label for="clinic_name">Klinik adı *</label><input id="clinic_name" type="text" name="clinic_name" required maxlength="80" value="<%= form.clinic_name || '' %>"></div>
-      <div><label for="clinic_phone">Klinik telefonu</label><input id="clinic_phone" type="text" name="clinic_phone" maxlength="30" value="<%= form.clinic_phone || '' %>"></div>
+      <div><label for="clinic_phone">Klinik telefonu</label><input id="clinic_phone" type="tel" name="clinic_phone" maxlength="30" inputmode="tel" autocomplete="off" value="<%= form.clinic_phone || '' %>"></div>
       <div><label for="admin_name">Yönetici adı *</label><input id="admin_name" type="text" name="admin_name" required maxlength="80" value="<%= form.admin_name || '' %>"></div>
-      <div><label for="admin_email">Yönetici e-postası *</label><input id="admin_email" type="email" name="admin_email" required maxlength="120" value="<%= form.admin_email || '' %>"></div>
+      <div><label for="admin_email">Yönetici e-postası *</label><input id="admin_email" type="email" name="admin_email" required maxlength="120" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" value="<%= form.admin_email || '' %>"></div>
       <div><label for="admin_password">Geçici yönetici parolası *</label><input id="admin_password" type="password" name="admin_password" required autocomplete="new-password"><div class="help">En az 8 karakter, harf ve rakam. Yönetici ilk girişte değiştirir.</div></div>
     </div>
     <div class="form-actions"><button class="btn" type="submit">Klinik oluştur</button></div>

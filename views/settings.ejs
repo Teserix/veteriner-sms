@@ -6,7 +6,7 @@
     <h2 class="mt0">Klinik bilgileri</h2>
     <div class="form-grid">
       <div><label for="clinic_name">Klinik adı</label><input id="clinic_name" type="text" name="clinic_name" maxlength="80" value="<%= settings.clinic_name %>"></div>
-      <div><label for="clinic_phone">Klinik telefonu</label><input id="clinic_phone" type="text" name="clinic_phone" maxlength="30" value="<%= settings.clinic_phone %>"></div>
+      <div><label for="clinic_phone">Klinik telefonu</label><input id="clinic_phone" type="tel" name="clinic_phone" maxlength="30" inputmode="tel" autocomplete="off" value="<%= settings.clinic_phone %>"></div>
     </div>
   </div>
 
@@ -23,9 +23,9 @@
     <h2 class="mt0">Otomatik gönderim</h2>
     <label class="checkbox"><input type="checkbox" name="scheduler_enabled" value="1" <%= settings.scheduler_enabled === '1' ? 'checked' : '' %>> Zamanlayıcı açık (hatırlatmalar otomatik gönderilsin)</label>
     <div class="form-grid">
-      <div><label for="send_hour_start">Gönderim başlangıç saati</label><input id="send_hour_start" type="number" name="send_hour_start" min="0" max="23" value="<%= settings.send_hour_start %>"></div>
-      <div><label for="send_hour_end">Gönderim bitiş saati</label><input id="send_hour_end" type="number" name="send_hour_end" min="1" max="24" value="<%= settings.send_hour_end %>"></div>
-      <div><label for="daily_sms_limit">Günlük SMS sınırı</label><input id="daily_sms_limit" type="number" name="daily_sms_limit" min="0" max="5000" value="<%= settings.daily_sms_limit %>">
+      <div><label for="send_hour_start">Gönderim başlangıç saati</label><input id="send_hour_start" type="number" name="send_hour_start" inputmode="numeric" min="0" max="23" value="<%= settings.send_hour_start %>"></div>
+      <div><label for="send_hour_end">Gönderim bitiş saati</label><input id="send_hour_end" type="number" name="send_hour_end" inputmode="numeric" min="1" max="24" value="<%= settings.send_hour_end %>"></div>
+      <div><label for="daily_sms_limit">Günlük SMS sınırı</label><input id="daily_sms_limit" type="number" name="daily_sms_limit" inputmode="numeric" min="0" max="5000" value="<%= settings.daily_sms_limit %>">
         <div class="help">Beklenmedik harcamaya karşı emniyet. Sistem tavanı: <%= clinicCap %>. Sınıra ulaşınca kalan gönderimler ertesi güne kalır.</div></div>
     </div>
     <div class="help">Türkiye saatine göre. Bu aralık dışında SMS gönderilmez, bir sonraki uygun saatte gönderilir.</div>
@@ -61,7 +61,7 @@
   <h2 class="mt0">Test SMS gönder</h2>
   <form method="post" action="/ayarlar/test" class="row">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
-    <input type="tel" name="phone" placeholder="05xx xxx xx xx" required class="maxw220">
+    <input id="test_phone" type="tel" name="phone" inputmode="tel" autocomplete="off" enterkeyhint="send" aria-label="Test SMS için telefon numarası" placeholder="05xx xxx xx xx" required class="maxw220">
     <button class="btn secondary" type="submit">Test gönder</button>
   </form>
   <div class="help">Kayıtlı sağlayıcı ile "Test mesajı" gönderir; sonuç SMS geçmişine yazılır. Saatte en fazla 5 test.</div>

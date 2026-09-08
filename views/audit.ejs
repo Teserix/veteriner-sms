@@ -2,8 +2,11 @@
 <h1>Denetim günlüğü</h1>
 <div class="card">
   <% if (!list.length) { %><div class="empty">Kayıt yok.</div><% } else { %>
+  <p class="small muted table-hint">Tabloyu yana kaydırarak tüm sütunları görebilirsiniz.</p>
+  <div class="table-wrap">
   <table>
-    <tr><th>Zaman</th><th>Kim</th><th>Klinik</th><th>İşlem</th><th>Nesne</th><th>IP</th><th>Ek</th></tr>
+    <thead><tr><th>Zaman</th><th>Kim</th><th>Klinik</th><th>İşlem</th><th>Nesne</th><th>IP</th><th>Ek</th></tr></thead>
+    <tbody>
     <% for (const a of list) { %>
     <tr>
       <td class="small"><%= formatDateTime(a.created_at) %></td>
@@ -15,7 +18,9 @@
       <td class="small mono"><%= a.meta || '' %></td>
     </tr>
     <% } %>
+    </tbody>
   </table>
+  </div>
   <% } %>
 </div>
 <%- include('partials/footer') %>
