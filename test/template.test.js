@@ -31,22 +31,33 @@ describe('renderTemplate', () => {
 });
 
 describe('buildMessage', () => {
-  const settings = { ...DEFAULT_SETTINGS, template: 'Sayın {sahip}, {hayvan} {tarih} {tur} - {klinik} {klinik_tel}', clinic_name: 'Pati Vet', clinic_phone: '0212 555' };
-  const row = { owner_name: 'Mehmet Kaya', pet_name: 'Boncuk', due_date: '2026-09-10', type: 'asi', title: '' };
+  // Kimlik ve iptal kuyruğu sistemce eklenir (Ticari İletişim Yön. m.8/3, m.8/6, m.9/3-4); şablon yalnızca gövdedir
+  const settings = { ...DEFAULT_SETTINGS, template: 'Sayın {sahip}, {hayvan} {tarih} {tur} - {klinik} {klinik_tel}', clinic_name: 'Pati Vet', clinic_phone: '0212 555', legal_form: 'tacir', mersis_no: '0123456789012345' };
+  const row = { owner_name: 'Mehmet Kaya', pet_name: 'Boncuk', due_date: '2026-09-10', type: 'asi', title: '', opt_out_token: 'a'.repeat(32) };
 
-  test('başlık yoksa tür etiketi kullanılır, tarih DD.MM.YYYY olur', () => {
-    assert.equal(buildMessage(settings, row), 'Sayın Mehmet Kaya, Boncuk 10.09.2026 Aşı - Pati Vet 0212 555');
+  test('başlık yoksa tür etiketi kullanılır, tarih DD.MM.YYYY olur; başa nitelik, sona kimlik ve iptal gelir', () => {
+    const out = buildMessage(settings, row, 'abcdefabcdef');
+    assert.ok(out.startsWith('Bilgilendirme: Sayın Mehmet Kaya, Boncuk 10.09.2026 Aşı - Pati Vet 0212 555'), out);
+    assert.ok(out.includes('MERSIS:0123456789012345'), out);
+    assert.ok(out.includes('/ret/abcdefabcdef.' + 'a'.repeat(32)), out);
+    assert.ok(out.includes('Tel:0212 555'), out);
   });
   test('başlık varsa başlık kullanılır', () => {
-    assert.equal(buildMessage(settings, { ...row, title: 'Kuduz aşısı' }), 'Sayın Mehmet Kaya, Boncuk 10.09.2026 Kuduz aşısı - Pati Vet 0212 555');
+    assert.ok(buildMessage(settings, { ...row, title: 'Kuduz aşısı' }).includes('Boncuk 10.09.2026 Kuduz aşısı - Pati Vet'));
   });
   test('bilinmeyen tür ham değer olarak düşer', () => {
     assert.ok(buildMessage(settings, { ...row, type: 'ozel' }).includes(' ozel - '));
   });
   test('varsayılan şablon çalışır', () => {
-    const out = buildMessage({ ...DEFAULT_SETTINGS, clinic_name: 'Pati', clinic_phone: '0212' }, row);
-    assert.ok(out.startsWith('Sayın Mehmet Kaya, Boncuk adlı dostunuzun 10.09.2026 tarihinde Aşı randevusu'));
+    const out = buildMessage({ ...DEFAULT_SETTINGS, clinic_name: 'Pati', clinic_phone: '0212', legal_form: 'esnaf', tax_id: '1234567890', ruhsat_isim: 'Pati Vet' }, row, 'abcdefabcdef');
+    assert.ok(out.startsWith('Bilgilendirme: Sayın Mehmet Kaya, Boncuk adlı dostunuzun 10.09.2026 tarihinde Aşı randevusu'), out);
+    assert.ok(out.includes('Pati Vet VKN:1234567890'), out);
     assert.ok(!out.includes('{'));
+  });
+  test('toplam uzunluk 460 karakteri aşmaz; kuyruk asla kırpılmaz', () => {
+    const out = buildMessage({ ...settings, template: 'x'.repeat(320) }, row, 'abcdefabcdef');
+    assert.ok(out.length <= 460, String(out.length));
+    assert.ok(out.endsWith('Tel:0212 555'), out.slice(-40));
   });
 });
 

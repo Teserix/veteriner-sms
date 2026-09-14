@@ -1,0 +1,41 @@
+<%- include('partials/header') %>
+<h1>KVKK ilgili kişi başvuruları</h1>
+<div class="card">
+  <div class="help">Hasta sahibi kişisel verileriyle ilgili başvurduğunda burada kaydedin. Başvurular en geç <strong>30 gün</strong> içinde ücretsiz sonuçlandırılmalıdır (KVKK m.13/2; Veri Sorumlusuna Başvuru Usul ve Esasları Hakkında Tebliğ m.6/5). Erişim talebi için hasta sahibi sayfasındaki "Veri (JSON/CSV)" düğmesini, silme talebi için "Anonimleştir" ya da "Sil" düğmesini kullanın.</div>
+  <form method="post" action="/basvurular" class="mt10">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <div class="form-grid">
+      <div><label for="applicant_name">Başvuran ad soyad *</label><input id="applicant_name" type="text" name="applicant_name" required maxlength="120" autocomplete="off"></div>
+      <div><label for="applicant_phone">Telefon</label><input id="applicant_phone" type="tel" name="applicant_phone" inputmode="tel" autocomplete="off" placeholder="05xx xxx xx xx"></div>
+      <div><label for="owner_id">Hasta sahibi kayıt no</label><input id="owner_id" type="number" name="owner_id" inputmode="numeric" min="1" placeholder="sahip sayfasındaki numara"></div>
+      <div><label for="kind">Talep türü *</label><select id="kind" name="kind"><% for (const [k, v] of Object.entries(kinds)) { %><option value="<%= k %>"><%= v %></option><% } %></select></div>
+      <div><label for="channel">Başvuru kanalı *</label><select id="channel" name="channel"><% for (const [k, v] of Object.entries(channels)) { %><option value="<%= k %>"><%= v %></option><% } %></select></div>
+      <div><label for="received_at">Alınma tarihi *</label><input id="received_at" type="date" name="received_at" required value="<%= form.received_at %>"></div>
+    </div>
+    <label for="note">Not</label><textarea id="note" name="note" maxlength="1000" rows="2"></textarea>
+    <div class="form-actions"><button class="btn" type="submit">Başvuruyu kaydet</button></div>
+  </form>
+</div>
+<div class="card">
+  <% if (!list.length) { %><div class="empty">Kayıtlı başvuru yok.</div><% } else { %>
+  <div class="table-wrap"><table class="cards">
+    <thead><tr><th>Alındı</th><th>Son yanıt</th><th>Başvuran</th><th>Talep</th><th>Kanal</th><th>Durum</th><th><span class="visually-hidden">İşlem</span></th></tr></thead>
+    <tbody><% for (const r of list) { %>
+      <tr>
+        <td data-label="Alındı"><%= formatDate(r.received_at) %></td>
+        <td data-label="Son yanıt"><%= formatDate(r.due_at) %><% if (r.overdue) { %> <span class="badge failed">gecikmiş</span><% } %></td>
+        <td data-label="Başvuran"><%= r.applicant_name %><% if (r.owner_id) { %> <a class="small" href="/sahipler/<%= r.owner_id %>">#<%= r.owner_id %><%= r.ownerName ? ' ' + r.ownerName : '' %></a><% } %></td>
+        <td data-label="Talep"><%= kinds[r.kind] || r.kind %><% if (r.note) { %><br><span class="small muted"><%= r.note %></span><% } %></td>
+        <td data-label="Kanal"><%= channels[r.channel] || r.channel %></td>
+        <td data-label="Durum"><span class="badge <%= r.status === 'acik' ? 'pending' : (r.status === 'kapali' ? 'ok' : 'cancelled') %>"><%= r.status === 'acik' ? 'Açık' : (r.status === 'kapali' ? 'Yanıtlandı' : 'Reddedildi') %></span><% if (r.closed_at) { %><br><span class="small muted"><%= formatDateTime(r.closed_at) %> · <%= r.closed_by %></span><% } %></td>
+        <td class="actions"><% if (r.status === 'acik') { %>
+          <form method="post" action="/basvurular/<%= r.id %>/kapat" class="row"><input type="hidden" name="_csrf" value="<%= csrf %>">
+            <select name="status" aria-label="Sonuç"><option value="kapali">Yanıtlandı</option><option value="reddedildi">Reddedildi</option></select>
+            <button class="btn sm secondary" type="submit">Kapat</button></form>
+        <% } %></td>
+      </tr>
+    <% } %></tbody>
+  </table></div>
+  <% } %>
+</div>
+<%- include('partials/footer') %>

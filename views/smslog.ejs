@@ -9,7 +9,7 @@
     <tr>
       <td class="small" data-label="Zaman"><%= formatDateTime(s.created_at) %><br><span class="muted"><%= s.sent_by === 'zamanlayici' ? 'otomatik' : s.sent_by %><%= s.kind === 'test' ? ' · test' : '' %></span></td>
       <td data-label="Alıcı"><% if (s.owner_exists) { %><a href="/sahipler/<%= s.owner_id %>"><%= s.owner_name_display %></a><% } else { %><%= s.owner_name_display || '—' %><% if (s.owner_name_display) { %> <span class="small muted">(silinmiş)</span><% } %><% } %><br><span class="small mono muted"><%= formatPhone(s.phone) %></span><% if (s.pet_name_display) { %><br><span class="small"><%= s.pet_name_display %></span><% } %></td>
-      <td class="small pre" data-label="Mesaj"><%= s.message %></td>
+      <td class="small pre" data-label="Mesaj"><%= s.message %><% if (s.legal_basis) { %><br><span class="muted">dayanak: <%= s.legal_basis === 'm6_1' ? 'm.6/1 bakım bilgilendirmesi' : s.legal_basis %> · iys=<%= s.iys_flag %></span><% } %><% if (s.anonymized_at) { %><br><span class="muted">anonimleştirildi <%= formatDateTime(s.anonymized_at) %></span><% } %></td>
       <td class="small" data-label="Sağlayıcı"><%= s.provider %><% if (s.provider_ref) { %><br><span class="mono muted"><%= s.provider_ref %></span><% } %></td>
       <td data-label="Durum"><span class="badge <%= s.status === 'sent' ? 'ok' : 'failed' %>"><%= s.status === 'sent' ? 'Gönderildi' : 'Hata' %></span><% if (s.error) { %><br><span class="small muted"><%= s.error %></span><% } %></td>
     </tr>

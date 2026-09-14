@@ -1,0 +1,28 @@
+<%- include('partials/header') %>
+<h1>Sözleşme onayı</h1>
+<% if (pending.length) { %>
+  <div class="warnbox">Kliniğinizin uygulamayı kullanabilmesi için aşağıdaki belgelerin güncel sürümünün klinik yöneticisi tarafından kabul edilmesi gerekir. Her belgeyi okuyup kendi kutusunu işaretleyin.</div>
+<% } else { %>
+  <div class="flash ok">Tüm belgelerin güncel sürümü kabul edilmiş. Kopyaları Ayarlar › Sözleşmeler bölümünde.</div>
+<% } %>
+<% if (error) { %><div class="flash err"><%= error %></div><% } %>
+<form method="post" action="/sozlesme">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <% for (const d of docs) { %>
+    <section class="card">
+      <h2 class="mt0"><%= d.title %> <span class="muted small">· sürüm <%= d.version %></span></h2>
+      <div class="legal scrollbox"><%- d.html %></div>
+      <% if (d.pending) { %>
+        <label class="checkbox mt10"><input type="checkbox" name="accept_<%= d.slug %>" value="1"> <strong><%= d.title %></strong> belgesini okudum, anladım ve kabul ediyorum.</label>
+      <% } else { %>
+        <div class="help mt10"><span class="badge ok">kabul edildi</span></div>
+      <% } %>
+      <div class="help"><a href="/belgeler/<%= d.slug %>" target="_blank" rel="noopener">Ayrı sayfada aç / yazdır</a></div>
+    </section>
+  <% } %>
+  <% if (pending.length) { %>
+    <div class="form-actions"><button class="btn" type="submit">Onayla ve devam et</button></div>
+    <p class="help">Kabul tarihi, saati, IP adresiniz, kullanıcı kimliğiniz ve belge özeti (SHA-256) kaydedilir.</p>
+  <% } %>
+</form>
+<%- include('partials/footer') %>

@@ -59,4 +59,6 @@ export const limiters = {
   manualSms: createLimiter({ windowMs: 60 * MIN, max: 30 }),
   importUpload: createLimiter({ windowMs: 60 * MIN, max: 5 }),
   post: createLimiter({ windowMs: 15 * MIN, max: 300 }),
+  optOut: createLimiter({ windowMs: 60 * MIN, max: 20 }),      // oturumsuz ret sayfası (IP başına)
+  publicPage: createLimiter({ windowMs: 15 * MIN, max: 120 }), // oturumsuz belge/aydınlatma sayfaları (IP başına)
 };

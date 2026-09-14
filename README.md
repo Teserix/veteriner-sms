@@ -73,6 +73,9 @@ ezer. `SKIP_DOTENV=1` ile `.env` tamamen yok sayılır (testler için).
 | `BACKUP_HOUR` | `3` | İstanbul saatiyle bu saatten sonra günde bir kez yedek (0–23) |
 | `BACKUP_RETENTION_DAYS` | `14` | Bu günden eski yedek klasörleri silinir (alt sınır 1) |
 | `APP_VERSION` | `1.0.0` | `/api/version` çıktısındaki sürüm (isteğe bağlı) |
+| `BACKUP_SECONDARY_DIR` | – | Makine dışı yedek hedefi (ayrı disk/USB/ağ dışı bağlama). Doluysa her yedek buraya da **şifreli** (`.db.enc`) yazılır |
+| `BACKUP_KEY` | – | Yedek şifreleme anahtarı (≥ 32 karakter, `APP_SECRET`'ten farklı). Yoksa ikinci hedefe kopya alınmaz |
+| `COMPANY_NAME`, `COMPANY_LEGAL_FORM`, `COMPANY_TAX_ID`, `COMPANY_MERSIS`, `COMPANY_TRADE_REGISTRY_NO`, `COMPANY_ADDRESS`, `COMPANY_EMAIL`, `COMPANY_PHONE`, `COMPANY_KEP`, `COMPANY_HOSTING_PROVIDER` | – | Hizmet sağlayıcı (Teserix) kimlik bilgileri; `/iletisim` sayfasında ve hukuki metinlerde gösterilir (5651 m.3; 6563 m.3) |
 
 `APP_SECRET` üretmek için:
 
@@ -92,9 +95,45 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"
    **geçici parola** gösterilir (bir kez).
 2. Klinik yöneticisi bu parolayla `/giris` yapar; ilk girişte `/sifre` sayfasına yönlendirilir ve
    parolasını değiştirmeden başka sayfa açamaz.
-3. Yönetici `/ayarlar` altında klinik adı/telefonu, SMS sağlayıcısı, gönderici başlığı ve şablonu
-   girer; "Test SMS" ile dener.
-4. Yönetici `/kullanicilar` altında personel ekler (yine geçici parola ile).
+3. Parola değişince `/sozlesme` açılır: Abonelik Sözleşmesi ve Kişisel Veri İşleme Eki **ayrı ayrı**
+   okunup kabul edilmeden klinik ekranları açılmaz. Kabul kaydı (sürüm, SHA-256, tarih, IP) tutulur.
+4. Yönetici `/ayarlar` altında **Hukuki kimlik** bölümünü doldurur (tacir → MERSİS; esnaf → vergi/T.C.
+   kimlik no + ruhsat adı; klinik telefonu; m.6/1 beyanı). Bu bölüm tamamlanana kadar hatırlatma SMS'i
+   **gönderilmez** (panelde kırmızı bant; test SMS serbesttir). Ardından SMS sağlayıcısı, gönderici
+   başlığı ve şablon girilir; "Test SMS" ile denenir.
+5. Yönetici `/kullanicilar` altında personel ekler (yine geçici parola ile).
+6. Ayarlar'daki **hasta sahibi aydınlatma metni** bağlantısı (`/aydinlatma/<kısa ad>`) kayıt formuna,
+   bekleme salonuna (QR) ve web sitesine konur.
+
+## Mevzuat uyumu
+
+Ayrıntı: `docs/mevzuat-uyum-spesifikasyonu.md` (doğrulanmış dayanaklar, avukata sorulacaklar) ve
+`docs/yetki-matrisi.md`. Özet:
+
+- **Her SMS** sistemce şu biçimde gönderilir: `Bilgilendirme: <şablon> <MERSIS:… | Ad VKN:…>
+  Iptal: <adres>/ret/<belirteç> Tel:<klinik>`. Kimlik ve iptal satırı klinik tarafından kaldırılamaz
+  (Ticari İletişim ve Ticari Elektronik İletiler Hk. Yön. m.8/3, m.8/5, m.8/6, m.9/3-4).
+- **Şablon ve hatırlatma başlığı** denetlenir: indirim/kampanya/ücretsiz gibi özendirme ifadeleri,
+  ilaç ticari adları ve teşhis terimleri reddedilir (6343 m.9 reklam yasağı; TVHB Uyg. Yön. m.97,
+  m.68; VTÜ Yön. m.37/1). Hatırlatma iletileri Yön. m.6/1 kapsamında "bakım bilgilendirmesi" olduğu
+  için onay ve İYS kontrolü gerekmez; sağlayıcıya `iys:"0"` beyanı iletilir. Kampanya SMS'i bu
+  üründe yoktur.
+- **Ret:** SMS'teki bağlantı oturumsuz tek tıkla tercihi kapatır; panelden personel de ret işleyebilir.
+  Her tercih değişikliği `consent_events`'e tarih, kanal, kullanıcı ve IP ile yazılır (ispat, m.13/1).
+- **İçe aktarma** onay beyanı ister: "hastalarımız, iletişim bilgisini bize verdiler" (SMS açık) ya da
+  "bilinmiyor" (SMS kapalı başlar).
+- **İlgili kişi hakları:** hasta sahibi sayfasından JSON/CSV dışa aktarma, anonimleştirme, silme
+  (SMS kayıtlarındaki kişisel alanlar da temizlenir); `/basvurular` 30 günlük süre takibi
+  (KVKK m.13, Başvuru Tebliği m.6/5).
+- **Saklama ve imha:** SMS kayıtlarındaki kişisel alanlar en erken 3 yıl sonra (Yön. m.13/2)
+  otomatik anonimleştirilir, satır kalır (6563 m.11/3); denetim günlüğü 3 yıl sonra maskelenir;
+  imha turları `imha_log`'a yazılır ve silinmez (İmha Yön. m.7/3).
+- **Hukuki metinler** `docs/legal/` altında sürümlü; `/belgeler/<slug>` oturumsuz. Sürüm artınca
+  yöneticiler yeniden kabul eder. Metinler avukat incelemesi bekleyen taslaklardır.
+- **Veri ihlali:** `/admin/ihlaller` — tespit, etki, tedbir, klinik/Kurul/ilgili kişi bildirim
+  zamanları; 72 saat rozeti (Kurul 2019/10).
+- **Yedek:** `BACKUP_SECONDARY_DIR` + `BACKUP_KEY` ile makine dışı şifreli kopya; `scripts/restore.js`
+  ile çözme + bütünlük kontrolü; `deploy/mac-mini/service.sh status` FileVault durumunu gösterir.
 
 ## Günlük kullanım
 
@@ -194,6 +233,17 @@ Zamanlayıcı açıkken her gün `BACKUP_HOUR` (İstanbul) sonrası ilk turda:
 `PRAGMA wal_checkpoint(TRUNCATE)` + `VACUUM INTO` ile `master.db` ve her klinik dosyası
 `data/backups/YYYY-MM-DD/` altına kopyalanır, `.done` yazılır, `BACKUP_RETENTION_DAYS`'ten eski
 klasörler silinir. Yedek dosyaları tutarlı, tek parça SQLite dosyalarıdır (WAL yok).
+
+### Makine dışı şifreli kopya
+
+`.env`'de `BACKUP_SECONDARY_DIR=/Volumes/Yedek/veteriner-sms` ve `BACKUP_KEY=<openssl rand -base64 48>`
+tanımlıysa her yedek dosyası AES-256-GCM ile şifrelenip `<hedef>/YYYY-MM-DD/…db.enc` olarak da
+yazılır (Kişisel Veri Güvenliği Rehberi §3.6). Geri yükleme tatbikatı:
+
+```bash
+BACKUP_KEY=... node scripts/restore.js /Volumes/Yedek/veteriner-sms/2026-09-14/tenants/<id>.db.enc /tmp/<id>.db
+# -> integrity_check = ok ; servisi durdurup dosyayı data/tenants/<id>.db yerine koyun
+```
 
 ### Elle
 

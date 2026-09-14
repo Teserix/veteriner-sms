@@ -2,6 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { config } from '../config.js';
+import { randomId } from '../crypto.js';
 import { migrate } from './migrate.js';
 
 /**
@@ -86,10 +87,58 @@ export const TENANT_MIGRATIONS = [
   ALTER TABLE sms_log   ADD COLUMN kind TEXT NOT NULL DEFAULT 'reminder';
   CREATE INDEX IF NOT EXISTS idx_sms_kind_created ON sms_log(kind, created_at);
   `,
+  // 3: mevzuat uyumu — onay olay günlüğü, ret belirteci, ilgili kişi başvuruları, imha kaydı,
+  //    sms_log hukuki izi, Ek-4 alanları (adres, mikroçip)
+  `
+  ALTER TABLE owners  ADD COLUMN address TEXT;
+  ALTER TABLE owners  ADD COLUMN opt_out_token TEXT;
+  ALTER TABLE pets    ADD COLUMN microchip_no TEXT;
+  ALTER TABLE sms_log ADD COLUMN legal_basis TEXT;
+  ALTER TABLE sms_log ADD COLUMN iys_flag TEXT;
+  ALTER TABLE sms_log ADD COLUMN identity_used TEXT;
+  ALTER TABLE sms_log ADD COLUMN anonymized_at TEXT;
+  CREATE INDEX IF NOT EXISTS idx_sms_owner ON sms_log(owner_id);
+  CREATE INDEX IF NOT EXISTS idx_owners_optout ON owners(opt_out_token);
+  CREATE TABLE IF NOT EXISTS consent_events (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_id     INTEGER NOT NULL REFERENCES owners(id) ON DELETE CASCADE,
+    action       TEXT NOT NULL CHECK (action IN ('grant','revoke')),
+    channel      TEXT NOT NULL,
+    note         TEXT,
+    actor_email  TEXT,
+    ip           TEXT,
+    created_at   TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_consent_owner ON consent_events(owner_id, id DESC);
+  CREATE TABLE IF NOT EXISTS subject_requests (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_id         INTEGER,
+    applicant_name   TEXT NOT NULL,
+    applicant_phone  TEXT,
+    kind             TEXT NOT NULL CHECK (kind IN ('bilgi','erisim','duzeltme','silme','itiraz')),
+    channel          TEXT NOT NULL,
+    received_at      TEXT NOT NULL,
+    due_at           TEXT NOT NULL,
+    status           TEXT NOT NULL DEFAULT 'acik' CHECK (status IN ('acik','kapali','reddedildi')),
+    note             TEXT,
+    closed_at        TEXT,
+    closed_by        TEXT
+  );
+  CREATE TABLE IF NOT EXISTS imha_log (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_at     TEXT NOT NULL,
+    scope      TEXT NOT NULL,
+    method     TEXT NOT NULL,
+    row_count  INTEGER NOT NULL,
+    criteria   TEXT,
+    actor      TEXT
+  );
+  `,
 ];
 
+// Kimlik, telefon ve iptal satırı gönderimde sistemce eklenir (src/sms/policy.js); şablon yalnızca gövdedir.
 const DEFAULT_TEMPLATE =
-  'Sayın {sahip}, {hayvan} adlı dostunuzun {tarih} tarihinde {tur} randevusu vardır. Bilgi için: {klinik_tel} - {klinik}';
+  'Sayın {sahip}, {hayvan} adlı dostunuzun {tarih} tarihinde {tur} randevusu vardır. {klinik}';
 
 export const DEFAULT_SETTINGS = {
   clinic_name: '',
@@ -102,7 +151,32 @@ export const DEFAULT_SETTINGS = {
   send_hour_end: '20',
   scheduler_enabled: '1',
   daily_sms_limit: '200',
+  // Hukuki kimlik (Ticari İletişim Yön. m.8/3): tacir -> MERSİS, esnaf -> ad-soyad + TCKN/VKN
+  legal_form: '',            // 'tacir' | 'esnaf'
+  mersis_no: '',
+  tax_id: '',
+  ruhsat_isim: '',           // ruhsattaki işletme adı (esnafta kimlik satırında kullanılır)
+  kvkk_contact_email: '',
+  kvkk_contact_phone: '',
+  m61_declared_at: '',       // m.6/1 beyanı: iletişim bilgisi hasta sahibince bu amaçla verildi
+  retention_sms_days: '1095', // sms_log kişisel alanlarının anonimleştirilme süresi (Yön. m.13/2: en az 3 yıl)
+  notice_version: '',        // klinik -> hasta sahibi aydınlatma metni sürümü
 };
+
+/** Hukuki kimlik ve beyan eksikse SMS gönderimi kilitlenir (test hariç). Sorun listesi döner. */
+export function legalProblems(settings) {
+  const p = [];
+  const form = settings.legal_form;
+  if (form !== 'tacir' && form !== 'esnaf') p.push('İşletme türü (tacir/esnaf) seçilmemiş.');
+  else if (form === 'tacir' && !/^\d{16}$/.test(settings.mersis_no || '')) p.push('MERSİS numarası (16 hane) girilmemiş.');
+  else if (form === 'esnaf') {
+    if (!/^\d{10,11}$/.test(settings.tax_id || '')) p.push('Vergi kimlik / T.C. kimlik numarası girilmemiş.');
+    if (!String(settings.ruhsat_isim || '').trim()) p.push('Ruhsattaki işletme adı girilmemiş.');
+  }
+  if (!String(settings.clinic_phone || '').trim()) p.push('Klinik telefonu girilmemiş (iletide erişilebilir iletişim bilgisi zorunlu).');
+  if (!settings.m61_declared_at) p.push('Hasta sahibi iletişim beyanı onaylanmamış.');
+  return p;
+}
 
 const cache = new Map();
 const ID_RE = /^[a-f0-9]{12}$/;
@@ -171,36 +245,78 @@ export const owners = {
   all: (db) => db.prepare('SELECT * FROM owners ORDER BY name').all(),
   get: (db, id) => db.prepare('SELECT * FROM owners WHERE id = ?').get(id),
   byPhone: (db, phone) => db.prepare('SELECT * FROM owners WHERE phone = ?').get(phone),
-  create: (db, o) => db.prepare('INSERT INTO owners (name, phone, email, notes, sms_opt_in, created_at, import_batch) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(o.name, o.phone, o.email ?? null, o.notes ?? null, o.sms_opt_in ?? 1, o.created_at, o.import_batch ?? null).lastInsertRowid,
-  update: (db, id, o) => db.prepare('UPDATE owners SET name = ?, phone = ?, email = ?, notes = ?, sms_opt_in = ? WHERE id = ?')
-    .run(o.name, o.phone, o.email ?? null, o.notes ?? null, o.sms_opt_in ?? 1, id),
+  create: (db, o) => db.prepare('INSERT INTO owners (name, phone, email, notes, sms_opt_in, created_at, import_batch, address, opt_out_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(o.name, o.phone, o.email ?? null, o.notes ?? null, o.sms_opt_in ?? 1, o.created_at, o.import_batch ?? null, o.address ?? null, o.opt_out_token ?? randomId(16)).lastInsertRowid,
+  update: (db, id, o) => db.prepare('UPDATE owners SET name = ?, phone = ?, email = ?, notes = ?, sms_opt_in = ?, address = ? WHERE id = ?')
+    .run(o.name, o.phone, o.email ?? null, o.notes ?? null, o.sms_opt_in ?? 1, o.address ?? null, id),
+  setOptIn: (db, id, value) => db.prepare('UPDATE owners SET sms_opt_in = ? WHERE id = ?').run(value ? 1 : 0, id),
   /** İçe aktarmada mevcut sahibin BOŞ olan e-posta/not alanlarını doldurur; dolu alanlara dokunmaz */
   fillEmpty: (db, id, { email = null, notes = null }) => db.prepare(
     `UPDATE owners SET email = COALESCE(NULLIF(email, ''), ?), notes = COALESCE(NULLIF(notes, ''), ?) WHERE id = ?`).run(email, notes, id),
   delete: (db, id) => db.prepare('DELETE FROM owners WHERE id = ?').run(id),
   count: (db) => db.prepare('SELECT COUNT(*) AS c FROM owners').get().c,
+  /* --- Ret belirteci (SMS'teki iptal bağlantısı) --- */
+  byOptOutToken: (db, token) => db.prepare('SELECT * FROM owners WHERE opt_out_token = ?').get(token),
+  setOptOutToken: (db, id, token) => db.prepare('UPDATE owners SET opt_out_token = ? WHERE id = ?').run(token, id),
+  /**
+   * Anonimleştirme (KVKK m.7, İmha Yön. m.10): ad/iletişim alanları silinir, satır ve kimlik korunur.
+   * phone NOT NULL olduğundan yönlendirilemez yer tutucu yazılır. Hayvan ve hatırlatmalar CASCADE ile gider.
+   */
+  anonymize: (db, id) => db.prepare(`UPDATE owners SET name = '[silindi]', phone = ?, email = NULL, notes = NULL, address = NULL,
+    sms_opt_in = 0, opt_out_token = NULL WHERE id = ?`).run(`sil-${id}`, id),
+};
+
+/* ---------- Onay olayları (Ticari İletişim Yön. m.7/10, m.13/1 ispat; KVKK m.12 hesap verebilirlik) ---------- */
+export const consents = {
+  log: (db, e) => db.prepare('INSERT INTO consent_events (owner_id, action, channel, note, actor_email, ip, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(e.owner_id, e.action, e.channel, e.note ?? null, e.actor_email ?? null, e.ip ?? null, e.created_at).lastInsertRowid,
+  history: (db, ownerId) => db.prepare('SELECT * FROM consent_events WHERE owner_id = ? ORDER BY id DESC LIMIT 50').all(ownerId),
+  last: (db, ownerId) => db.prepare('SELECT * FROM consent_events WHERE owner_id = ? ORDER BY id DESC LIMIT 1').get(ownerId),
+};
+
+/* ---------- İlgili kişi başvuruları (KVKK m.13; Başvuru Tebliği m.6/5: en geç 30 gün) ---------- */
+export const SUBJECT_REQUEST_KINDS = Object.freeze({
+  bilgi: 'Bilgi talebi', erisim: 'Verilerine erişim', duzeltme: 'Düzeltme', silme: 'Silme / yok etme', itiraz: 'İtiraz',
+});
+
+export const subjectRequests = {
+  create: (db, r) => db.prepare(`INSERT INTO subject_requests (owner_id, applicant_name, applicant_phone, kind, channel, received_at, due_at, note)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(r.owner_id ?? null, r.applicant_name, r.applicant_phone ?? null, r.kind, r.channel, r.received_at, r.due_at, r.note ?? null).lastInsertRowid,
+  get: (db, id) => db.prepare('SELECT * FROM subject_requests WHERE id = ?').get(id),
+  list: (db) => db.prepare(`SELECT * FROM subject_requests ORDER BY CASE status WHEN 'acik' THEN 0 ELSE 1 END, due_at ASC, id DESC LIMIT 300`).all(),
+  openCount: (db) => db.prepare(`SELECT COUNT(*) AS c FROM subject_requests WHERE status = 'acik'`).get().c,
+  close: (db, id, { status, closedBy, closedAt, note }) => db.prepare(
+    `UPDATE subject_requests SET status = ?, closed_by = ?, closed_at = ?, note = COALESCE(?, note) WHERE id = ? AND status = 'acik'`)
+    .run(status, closedBy, closedAt, note ?? null, id).changes,
+};
+
+/* ---------- İmha kaydı (İmha Yön. m.7/3: en az 3 yıl saklanır; asla silinmez) ---------- */
+export const imhaLog = {
+  add: (db, r) => db.prepare('INSERT INTO imha_log (run_at, scope, method, row_count, criteria, actor) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(r.run_at, r.scope, r.method, r.row_count, r.criteria ?? null, r.actor ?? null).lastInsertRowid,
+  recent: (db, limit = 100) => db.prepare('SELECT * FROM imha_log ORDER BY id DESC LIMIT ?').all(limit),
+  lastRunAt: (db, scope) => db.prepare('SELECT run_at FROM imha_log WHERE scope = ? ORDER BY id DESC LIMIT 1').get(scope)?.run_at ?? null,
 };
 
 /* ---------- Hayvanlar ---------- */
 export const pets = {
   byOwner: (db, ownerId) => db.prepare('SELECT * FROM pets WHERE owner_id = ? ORDER BY name').all(ownerId),
-  allWithOwner: (db) => db.prepare(`SELECT p.*, o.name AS owner_name, o.phone AS owner_phone, o.email AS owner_email, o.sms_opt_in
+  allWithOwner: (db) => db.prepare(`SELECT p.*, o.name AS owner_name, o.phone AS owner_phone, o.email AS owner_email, o.address AS owner_address, o.sms_opt_in
     FROM pets p JOIN owners o ON o.id = p.owner_id ORDER BY o.name, p.name`).all(),
   get: (db, id) => db.prepare(`
     SELECT p.*, o.name AS owner_name, o.phone AS owner_phone, o.sms_opt_in
     FROM pets p JOIN owners o ON o.id = p.owner_id WHERE p.id = ?`).get(id),
-  create: (db, p) => db.prepare('INSERT INTO pets (owner_id, name, species, breed, sex, birth_date, notes, created_at, import_batch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(p.owner_id, p.name, p.species ?? null, p.breed ?? null, p.sex ?? null, p.birth_date ?? null, p.notes ?? null, p.created_at, p.import_batch ?? null).lastInsertRowid,
-  update: (db, id, p) => db.prepare('UPDATE pets SET name = ?, species = ?, breed = ?, sex = ?, birth_date = ?, notes = ? WHERE id = ?')
-    .run(p.name, p.species ?? null, p.breed ?? null, p.sex ?? null, p.birth_date ?? null, p.notes ?? null, id),
+  create: (db, p) => db.prepare('INSERT INTO pets (owner_id, name, species, breed, sex, birth_date, notes, created_at, import_batch, microchip_no) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(p.owner_id, p.name, p.species ?? null, p.breed ?? null, p.sex ?? null, p.birth_date ?? null, p.notes ?? null, p.created_at, p.import_batch ?? null, p.microchip_no ?? null).lastInsertRowid,
+  update: (db, id, p) => db.prepare('UPDATE pets SET name = ?, species = ?, breed = ?, sex = ?, birth_date = ?, notes = ?, microchip_no = ? WHERE id = ?')
+    .run(p.name, p.species ?? null, p.breed ?? null, p.sex ?? null, p.birth_date ?? null, p.notes ?? null, p.microchip_no ?? null, id),
   delete: (db, id) => db.prepare('DELETE FROM pets WHERE id = ?').run(id),
   count: (db) => db.prepare('SELECT COUNT(*) AS c FROM pets').get().c,
 };
 
 /* ---------- Hatırlatmalar ---------- */
 const REMINDER_SELECT = `
-  SELECT r.*, p.name AS pet_name, p.species, o.id AS owner_id, o.name AS owner_name, o.phone AS owner_phone, o.sms_opt_in
+  SELECT r.*, p.name AS pet_name, p.species, o.id AS owner_id, o.name AS owner_name, o.phone AS owner_phone, o.sms_opt_in, o.opt_out_token
   FROM reminders r
   JOIN pets p ON p.id = r.pet_id
   JOIN owners o ON o.id = p.owner_id`;
@@ -263,12 +379,20 @@ const SMS_SELECT = `
          COALESCE(p.name, s.pet_name) AS pet_name_display
   FROM sms_log s LEFT JOIN owners o ON o.id = s.owner_id LEFT JOIN pets p ON p.id = s.pet_id`;
 
+/** Anonimleştirilmiş satırda kişisel alanlar yerine bu yer tutucular kalır (sayım/durum bilgisi korunur) */
+const SCRUB_SQL = `UPDATE sms_log SET phone = '', message = '[anonim]', owner_name = NULL, pet_name = NULL, anonymized_at = ?`;
+
 export const smsLog = {
-  add: (db, l) => db.prepare(`INSERT INTO sms_log (owner_id, pet_id, reminder_id, phone, message, provider, status, provider_ref, error, sent_by, created_at, owner_name, pet_name, kind)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(l.owner_id ?? null, l.pet_id ?? null, l.reminder_id ?? null, l.phone, l.message, l.provider, l.status, l.provider_ref ?? null, l.error ?? null, l.sent_by ?? null, l.created_at, l.owner_name ?? null, l.pet_name ?? null, l.kind ?? 'reminder').lastInsertRowid,
+  add: (db, l) => db.prepare(`INSERT INTO sms_log (owner_id, pet_id, reminder_id, phone, message, provider, status, provider_ref, error, sent_by, created_at, owner_name, pet_name, kind, legal_basis, iys_flag, identity_used)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(l.owner_id ?? null, l.pet_id ?? null, l.reminder_id ?? null, l.phone, l.message, l.provider, l.status, l.provider_ref ?? null, l.error ?? null, l.sent_by ?? null, l.created_at, l.owner_name ?? null, l.pet_name ?? null, l.kind ?? 'reminder', l.legal_basis ?? null, l.iys_flag ?? null, l.identity_used ?? null).lastInsertRowid,
   recent: (db, limit = 200) => db.prepare(`${SMS_SELECT} ORDER BY s.id DESC LIMIT ?`).all(limit),
   byOwner: (db, ownerId) => db.prepare(`${SMS_SELECT} WHERE s.owner_id = ? ORDER BY s.id DESC LIMIT 100`).all(ownerId),
+  allByOwner: (db, ownerId) => db.prepare('SELECT * FROM sms_log WHERE owner_id = ? ORDER BY id').all(ownerId),
+  /** Sahip silinince/anonimleşince kişisel alanlar temizlenir; satır (sayım, durum, sağlayıcı referansı) kalır */
+  scrubOwner: (db, ownerId, at) => db.prepare(`${SCRUB_SQL} WHERE owner_id = ? AND anonymized_at IS NULL`).run(at, ownerId).changes,
+  /** Saklama süresi dolan satırların kişisel alanları temizlenir (periyodik imha) */
+  scrubOlderThan: (db, cutoffIso, at) => db.prepare(`${SCRUB_SQL} WHERE created_at < ? AND anonymized_at IS NULL`).run(at, cutoffIso).changes,
   /** Belirli bir andan itibaren gönderilen+başarısız toplamı (günlük tavan hesabı) */
   countSince: (db, sinceIso) => db.prepare('SELECT COUNT(*) AS c FROM sms_log WHERE created_at >= ?').get(sinceIso).c,
   countBetween: (db, fromIso, toIso) => {

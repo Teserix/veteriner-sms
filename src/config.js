@@ -68,7 +68,25 @@ export const config = {
   sessionTtlHours: 12,
   timeZone: 'Europe/Istanbul',
   version: env.APP_VERSION || '1.0.0',
+  // Yedek: ikinci hedef (ayrı disk / ağ dışı bağlama noktası) ve ayrı şifreleme anahtarı
+  backupSecondaryDir: env.BACKUP_SECONDARY_DIR ? path.resolve(env.BACKUP_SECONDARY_DIR) : '',
+  backupKey: env.BACKUP_KEY || '',
+  // Hizmet sağlayıcı (Teserix) kimlik bilgileri: /iletisim sayfası ve hukuki metinler (5651 m.3; 6563 m.3)
+  company: {
+    name: env.COMPANY_NAME || '',
+    legalForm: env.COMPANY_LEGAL_FORM || '',       // 'tacir' | 'esnaf'
+    taxId: env.COMPANY_TAX_ID || '',
+    mersis: env.COMPANY_MERSIS || '',
+    tradeRegistryNo: env.COMPANY_TRADE_REGISTRY_NO || '',
+    address: env.COMPANY_ADDRESS || '',
+    email: env.COMPANY_EMAIL || '',
+    phone: env.COMPANY_PHONE || '',
+    kep: env.COMPANY_KEP || '',
+    hostingProvider: env.COMPANY_HOSTING_PROVIDER || '', // yer sağlayıcı (5651 m.3/1)
+  },
 };
+if (config.backupKey && config.backupKey.length < 32) fail('BACKUP_KEY en az 32 karakter olmalı.');
+if (isProd && !config.company.name) console.warn('[UYARI] COMPANY_* değişkenleri boş; /iletisim sayfası ve hukuki metinler eksik görünecek.');
 
 for (const d of ['tenants', 'backups', 'trash']) {
   fs.mkdirSync(path.join(config.dataDir, d), { recursive: true });

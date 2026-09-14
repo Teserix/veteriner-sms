@@ -26,6 +26,13 @@ case "${1:-status}" in
   status)
     launchctl print "$DOMAIN/$LABEL" 2>/dev/null | grep -E "state|pid|last exit" || echo "kurulu değil ($DOMAIN)"
     curl -fsS http://localhost:3000/api/version 2>/dev/null && echo
+    # KVKK m.12 kontrol maddeleri: tam disk şifrelemesi (Rehber §3.3) ve makine dışı yedek (Rehber §3.6)
+    echo "FileVault: $(fdesetup status 2>/dev/null || echo 'bilinmiyor')"
+    if grep -qE '^BACKUP_SECONDARY_DIR=.+' "$REPO/.env" 2>/dev/null && grep -qE '^BACKUP_KEY=.{32,}' "$REPO/.env" 2>/dev/null; then
+      echo "Makine dışı şifreli yedek: yapılandırılmış"
+    else
+      echo "Makine dışı şifreli yedek: YOK (.env: BACKUP_SECONDARY_DIR + BACKUP_KEY)"
+    fi
     ;;
   logs)
     tail -n 50 -f "$HOME/Library/Logs/veteriner-sms.log"

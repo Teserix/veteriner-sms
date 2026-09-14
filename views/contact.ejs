@@ -1,0 +1,21 @@
+<%- include('partials/header') %>
+<h1>İletişim ve hizmet sağlayıcı bilgileri</h1>
+<div class="card">
+  <p class="help">5651 sayılı Kanun m.3 ve 6563 sayılı Kanun m.3 uyarınca hizmet sağlayıcının tanıtıcı bilgileri.</p>
+  <% if (!company.name) { %><div class="warnbox">Şirket bilgileri henüz tanımlanmamış (COMPANY_* ortam değişkenleri).</div><% } %>
+  <dl class="kv">
+    <dt>Unvan</dt><dd><%= company.name || '—' %></dd>
+    <% if (company.mersis) { %><dt>MERSİS numarası</dt><dd><%= company.mersis %></dd><% } %>
+    <% if (company.tradeRegistryNo) { %><dt>Ticaret sicil numarası</dt><dd><%= company.tradeRegistryNo %></dd><% } %>
+    <dt>Vergi kimlik numarası</dt><dd><%= company.taxId || '—' %></dd>
+    <dt>Merkez adresi</dt><dd><%= company.address || '—' %></dd>
+    <dt>E-posta</dt><dd><% if (company.email) { %><a href="mailto:<%= company.email %>"><%= company.email %></a><% } else { %>—<% } %></dd>
+    <dt>Telefon</dt><dd><%= company.phone || '—' %></dd>
+    <% if (company.kep) { %><dt>KEP adresi</dt><dd><%= company.kep %></dd><% } %>
+    <% if (company.hostingProvider) { %><dt>Yer sağlayıcı</dt><dd><%= company.hostingProvider %></dd><% } %>
+    <dt>Uygulama adresi</dt><dd><%= appOrigin || '—' %></dd>
+  </dl>
+  <h2>KVKK başvuruları</h2>
+  <p class="small">Uygulama kullanıcıları (klinik personeli) kişisel verilerine ilişkin başvurularını yukarıdaki adres, KEP veya e-posta yoluyla iletebilir; başvurular 30 gün içinde ücretsiz yanıtlanır. <strong>Hasta sahipleri</strong> için veri sorumlusu ilgili kliniktir; başvurunuzu kliniğinize yapınız. Ayrıntı: <a href="/belgeler/aydinlatma-teserix">Aydınlatma Metni</a>.</p>
+</div>
+<%- include('partials/footer') %>

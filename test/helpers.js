@@ -133,7 +133,7 @@ export async function logout(client) {
 }
 
 /** Geçici parolayla giriş + zorunlu parola değişimi */
-export async function loginAndChangePassword(client, email, tempPassword, newPassword) {
+export async function loginAndChangePassword(client, email, tempPassword, newPassword, { acceptContracts = true } = {}) {
   const r = await login(client, email, tempPassword);
   if (!(r.status === 302 && String(r.location).startsWith('/sifre'))) {
     throw new Error(`geçici parolayla giriş beklenmedik: ${r.status} ${r.location}`);
@@ -141,11 +141,16 @@ export async function loginAndChangePassword(client, email, tempPassword, newPas
   const csrf = await csrfFor(client, '/sifre');
   const c = await client.post('/sifre', { _csrf: csrf, current: tempPassword, password: newPassword, password2: newPassword });
   if (c.status !== 302) throw new Error(`parola değişimi başarısız: ${c.status}`);
+  // Klinik yöneticisi ilk girişte sözleşmeyi kabul etmeden klinik ekranlarına giremez (legalAcceptanceGate)
+  if (acceptContracts) {
+    const probe = await client.get('/sozlesme');
+    if (probe.status === 200 && /name="accept_/.test(probe.text)) await acceptLegal(client);
+  }
   return c;
 }
 
 /** Süper yönetici oturumuyla klinik oluşturur; döner { id } */
-export async function createClinicViaHttp(client, { name, phone = '', adminName = 'Yönetici', adminEmail, adminPassword }) {
+export async function createClinicViaHttp(client, { name, phone = '', adminName = 'Yönetici', adminEmail, adminPassword, legalReady = true }) {
   const csrf = await csrfFor(client, '/admin');
   const r = await client.post('/admin/klinik', {
     _csrf: csrf, clinic_name: name, clinic_phone: phone, admin_name: adminName, admin_email: adminEmail, admin_password: adminPassword,
@@ -155,6 +160,8 @@ export async function createClinicViaHttp(client, { name, phone = '', adminName 
   const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const id = new RegExp(`/admin/klinik/([a-f0-9]{12})"><strong>${esc}</strong>`).exec(page.text)?.[1];
   if (!id) throw new Error('klinik kimliği listede bulunamadı');
+  // Varsayılan: gönderim kilidini açan hukuki kimlik ayarları yazılır (testler SMS akışına odaklanabilsin)
+  if (legalReady) await makeLegalReady(id, { clinic_phone: phone || LEGAL_SETTINGS.clinic_phone });
   return { id };
 }
 
@@ -162,4 +169,31 @@ export async function createClinicViaHttp(client, { name, phone = '', adminName 
 export async function resetLoginLimiter() {
   const { limiters } = await import('../src/ratelimit.js');
   limiters.login._hits.clear();
+}
+
+/* ---------- Mevzuat uyumu (hukuki kimlik, sözleşme kabulü) ---------- */
+
+/** Gönderim kilidini açan asgari ayarlar: tacir + MERSİS + telefon + m.6/1 beyanı */
+export const LEGAL_SETTINGS = Object.freeze({
+  legal_form: 'tacir', mersis_no: '0123456789012345', clinic_phone: '0212 555 00 00', m61_declared_at: '2026-01-01T00:00:00.000Z',
+});
+
+/** Klinik veritabanına hukuki kimlik ayarlarını yazar (dispatch'in "legal" kilidi açılır) */
+export async function makeLegalReady(clinicId, extra = {}) {
+  const { openTenant, setSetting } = await import('../src/db/tenant.js');
+  const db = openTenant(clinicId);
+  for (const [k, v] of Object.entries({ ...LEGAL_SETTINGS, ...extra })) setSetting(db, k, v);
+  return db;
+}
+
+/** Klinik yöneticisi oturumuyla /sozlesme'deki bekleyen belgeleri kabul eder */
+export async function acceptLegal(client) {
+  const page = await client.get('/sozlesme');
+  if (page.status !== 200) throw new Error(`/sozlesme beklenmedik: ${page.status} ${page.location}`);
+  const csrf = csrfOf(page.text);
+  const data = { _csrf: csrf };
+  for (const m of page.text.matchAll(/name="(accept_[a-z-]+)"/g)) data[m[1]] = '1';
+  const r = await client.post('/sozlesme', data);
+  if (r.status !== 302) throw new Error(`sözleşme kabulü başarısız: ${r.status}`);
+  return r;
 }

@@ -1,7 +1,8 @@
 import bcrypt from 'bcryptjs';
 import { config } from './config.js';
 import { randomToken, sha256, safeEqual } from './crypto.js';
-import { sessions, users } from './db/master.js';
+import { sessions, users, legalAcceptances } from './db/master.js';
+import { LEGAL_DOCS, ACCEPT_REQUIRED } from './legal.js';
 import { nowIso, safeLocalPath } from './util.js';
 import { clientIp } from './ratelimit.js';
 
@@ -69,10 +70,10 @@ function clearSessionCookie(res) {
   res.append('Set-Cookie', cookieString(SESSION_COOKIE, '', { maxAge: 0 }));
 }
 
-/** Giriş formu için oturum öncesi CSRF belirteci (double-submit çerez) */
-export function issuePreToken(res) {
+/** Giriş formu ve oturumsuz ret sayfası için oturum öncesi CSRF belirteci (double-submit çerez) */
+export function issuePreToken(res, path = '/giris') {
   const token = randomToken(24);
-  res.append('Set-Cookie', cookieString(PRE_COOKIE, token, { maxAge: 15 * 60, path: '/giris' }));
+  res.append('Set-Cookie', cookieString(PRE_COOKIE, token, { maxAge: 15 * 60, path }));
   return token;
 }
 
@@ -168,8 +169,8 @@ export function originCheck(req, res, next) {
 export function csrfMiddleware(req, res, next) {
   if (SAFE_METHODS.has(req.method)) return next();
   if (!req.session) {
-    // Oturumsuz form yalnızca giriş; kendi oturum-öncesi belirteciyle korunur
-    if (req.path === '/giris') return next();
+    // Oturumsuz formlar yalnızca giriş ve SMS ret sayfası; ikisi de kendi oturum-öncesi belirteciyle korunur
+    if (req.path === '/giris' || /^\/ret\/[a-f0-9]{12}\.[a-f0-9]{32}$/.test(req.path)) return next();
     return res.status(403).render('error', { title: 'Oturum bulunamadı', message: 'Oturumunuz sona ermiş. Lütfen yeniden giriş yapın.' });
   }
   // Dosya yükleme (multipart) gövdesi burada ayrıştırılmaz; /iceaktar rotası alanları okuduktan sonra belirteci kendisi doğrular
@@ -208,4 +209,26 @@ export function mustChangePasswordGate(req, res, next) {
   if (!req.user?.mustChangePassword) return next();
   if (req.path === '/sifre' || req.path === '/cikis') return next();
   return res.redirect('/sifre?err=' + encodeURIComponent('Devam etmeden önce geçici parolanızı değiştirin.'));
+}
+
+/** Kliniğin kabul etmesi gereken belgelerden güncel sürümü kabul edilmemiş olanlar (yalnızca klinik yöneticisi için) */
+export function pendingLegalDocs(user) {
+  if (!user || user.role !== 'admin' || !user.clinicId) return [];
+  return ACCEPT_REQUIRED.filter((slug) => {
+    const a = legalAcceptances.latest(user.clinicId, slug);
+    return !a || a.version !== LEGAL_DOCS[slug].version;
+  });
+}
+
+const LEGAL_GATE_EXEMPT = ['/sozlesme', '/cikis', '/sifre', '/iletisim'];
+
+/** Klinik yöneticisi, güncel abonelik sözleşmesi ve veri işleme ekini kabul etmeden klinik ekranlarına giremez */
+export function legalAcceptanceGate(req, res, next) {
+  if (!req.user || req.user.role !== 'admin' || !req.user.clinicId) return next();
+  if (LEGAL_GATE_EXEMPT.includes(req.path) || req.path.startsWith('/belgeler/') || req.path.startsWith('/ret/')) return next();
+  if (!pendingLegalDocs(req.user).length) return next();
+  if (req.method !== 'GET') {
+    return res.status(403).render('error', { title: 'Sözleşme onayı gerekli', message: 'Devam etmeden önce güncel sözleşmeyi kabul etmelisiniz.' });
+  }
+  return res.redirect('/sozlesme');
 }

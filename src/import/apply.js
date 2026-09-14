@@ -1,4 +1,4 @@
-import { owners, pets } from '../db/tenant.js';
+import { owners, pets, consents } from '../db/tenant.js';
 import { withTransaction } from '../db/migrate.js';
 import { normalizePhone, formatPhone, isValidEmail, nowIso, trim } from '../util.js';
 import { normalizeSpecies, normalizeSex, normalizeDate } from './mapping.js';
@@ -108,7 +108,7 @@ export function summarize(classified) {
  * Tek transaction. Önizleme ile onay arasında veri değişmiş olabilir; telefon/hayvan tekrar kontrol edilir.
  * createdBy yalnızca çağıranın denetim kaydı içindir (sahip/hayvan tablolarında sütunu yoktur).
  */
-export function applyImport(db, classified, { batchToken = null } = {}) {
+export function applyImport(db, classified, { batchToken = null, smsOptIn = 1, consentNote = null, actorEmail = null, ip = null } = {}) {
   const at = nowIso();
   return withTransaction(db, () => {
     const counts = { owners: 0, pets: 0, skipped: 0, errors: 0 };
@@ -123,7 +123,9 @@ export function applyImport(db, classified, { batchToken = null } = {}) {
           o = { id: existing.id, petKeys: new Set(pets.byOwner(db, existing.id).map((p) => petKey(p.name))) };
           if (r.email || r.owner_notes) owners.fillEmpty(db, existing.id, { email: r.email, notes: r.owner_notes });
         } else {
-          const id = owners.create(db, { name: r.owner_name, phone: r.phone, email: r.email, notes: r.owner_notes, sms_opt_in: 1, created_at: at, import_batch: batchToken });
+          const id = owners.create(db, { name: r.owner_name, phone: r.phone, email: r.email, notes: r.owner_notes, sms_opt_in: smsOptIn ? 1 : 0, created_at: at, import_batch: batchToken });
+          // Toplu kayıtta tercih olayı: klinik beyanı (kanal ice_aktarma) veya "bilinmiyor -> kapalı"
+          consents.log(db, { owner_id: id, action: smsOptIn ? 'grant' : 'revoke', channel: 'ice_aktarma', note: consentNote, actor_email: actorEmail, ip, created_at: at });
           o = { id, petKeys: new Set() };
           counts.owners++;
         }

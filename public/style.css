@@ -263,3 +263,18 @@ code { font-family: ui-monospace, Menlo, monospace; overflow-wrap: anywhere; }
 .badge.add_pet { background: #dbeafe; color: #1d4ed8; }
 .badge.skip_duplicate { background: #e5e7eb; color: #374151; }
 .badge.error { background: #fee2e2; color: var(--danger); }
+
+/* ---- Hukuki metinler / oturumsuz sayfalar ---- */
+.site-footer { max-width: 1100px; margin: 24px auto 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); font-size: 12px; color: var(--muted, #6b7280); text-align: center; }
+.site-footer a { color: inherit; }
+.legal h1 { font-size: 1.4rem; }
+.legal h2 { font-size: 1.1rem; margin-top: 20px; }
+.legal h3 { font-size: 1rem; }
+.legal p, .legal li { line-height: 1.55; }
+.legal table td, .legal table th { vertical-align: top; }
+.scrollbox { max-height: 360px; overflow: auto; padding: 0 12px; border: 1px solid var(--line, #e5e7eb); border-radius: 8px; background: #fafafa; }
+.card.narrow { max-width: 520px; margin: 24px auto; }
+dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+dl.kv dt { font-weight: 600; }
+dl.kv dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 700px) { dl.kv { grid-template-columns: 1fr; } dl.kv dt { margin-top: 8px; } }

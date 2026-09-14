@@ -1,26 +1,36 @@
 import { config } from './config.js';
 import { clinics } from './db/master.js';
-import { openTenant, getSettings, reminders } from './db/tenant.js';
+import { openTenant, getSettings, reminders, owners } from './db/tenant.js';
 import { dispatchUnlocked, lockKey } from './sms/dispatch.js';
-import { renderTemplate } from './sms/index.js';
+import { composeFromTemplate } from './sms/policy.js';
+import { randomId } from './crypto.js';
 import { withLock } from './lock.js';
 import { nowLocal, nowIso, todayLocal, formatDate, addDays, REMINDER_TYPES } from './util.js';
 import { log } from './log.js';
 import { maybeBackup } from './backup.js';
+import { maybeRetention } from './retention.js';
 
 const MAX_ATTEMPTS = 3;
 const RETRY_AFTER_MS = 4 * 60 * 60 * 1000; // başarısız denemeden 4 saat sonra tekrar
 
-/** Hatırlatma için SMS metnini üretir */
-export function buildMessage(settings, r) {
-  return renderTemplate(settings.template, {
+/** Hatırlatma için SMS metnini üretir (şablon + zorunlu kimlik/iptal kuyruğu) */
+export function buildMessage(settings, r, clinicId = '') {
+  return composeFromTemplate(settings, {
     sahip: r.owner_name,
     hayvan: r.pet_name,
     tarih: formatDate(r.due_date),
     tur: r.title || REMINDER_TYPES[r.type] || r.type,
     klinik: settings.clinic_name || '',
     klinik_tel: settings.clinic_phone || '',
-  });
+  }, { clinicId, optOutToken: r.opt_out_token || '' });
+}
+
+/** Migrasyon 3 öncesi kayıtlarda ret belirteci yoktur; ilk gönderimde üretilir */
+export function ensureOptOutToken(db, ownerId, current) {
+  if (current) return current;
+  const token = randomId(16);
+  owners.setOptOutToken(db, ownerId, token);
+  return token;
 }
 
 /**
@@ -61,7 +71,8 @@ export function sendReminderSms(clinicId, db, settings, r, sentBy = 'zamanlayici
     const today = todayLocal(now);
     const prevAttempt = fresh.last_attempt_at;
     reminders.claim(db, fresh.id, at); // çökme koruması: yarım kalan gönderim 4 saat içinde tekrar denenmez
-    const message = buildMessage(settings, fresh);
+    fresh.opt_out_token = ensureOptOutToken(db, fresh.owner_id, fresh.opt_out_token);
+    const message = buildMessage(settings, fresh, clinicId);
     const result = await dispatchUnlocked({
       clinicId, db, settings, kind: 'reminder', to: fresh.owner_phone, message,
       owner: { id: fresh.owner_id, name: fresh.owner_name, sms_opt_in: fresh.sms_opt_in },
@@ -133,6 +144,7 @@ export async function tick(now = new Date()) {
         }
       }
       await maybeBackup(now);
+      await maybeRetention(now);
     } finally {
       running = null;
     }

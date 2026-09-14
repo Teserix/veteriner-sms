@@ -18,6 +18,8 @@
           <option value="Erkek" <%= form.sex === 'Erkek' ? 'selected' : '' %>>Erkek</option>
         </select></div>
       <div><label for="birth_date">Doğum tarihi</label><input id="birth_date" type="date" name="birth_date" value="<%= form.birth_date || '' %>"></div>
+      <div><label for="microchip_no">Mikroçip numarası</label><input id="microchip_no" type="text" name="microchip_no" inputmode="numeric" maxlength="15" pattern="[0-9]{15}" autocomplete="off" value="<%= form.microchip_no || '' %>">
+        <div class="help">15 hane (ISO 11784). Kedi ve köpeklerde dijital kimliklendirme zorunludur (5199 m.4/k).</div></div>
     </div>
     <label for="notes">Not</label>
     <textarea id="notes" name="notes" maxlength="1000"><%= form.notes || '' %></textarea>

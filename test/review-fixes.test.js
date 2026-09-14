@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   setupEnv, createClient, startApp, createSuperadmin, login, csrfFor, csrfOf,
   createClinicViaHttp, loginAndChangePassword, logout, resetLoginLimiter,
+  LEGAL_SETTINGS,
 } from './helpers.js';
 
 setupEnv();
@@ -73,6 +74,7 @@ function makeClinic() {
   const id = randomId(6);
   clinics.create(id, 'Test ' + id, '', new Date().toISOString());
   const db = openTenant(id);
+  for (const [k, v] of Object.entries(LEGAL_SETTINGS)) setSetting(db, k, v); // gönderim kilidi açık
   return { id, db };
 }
 

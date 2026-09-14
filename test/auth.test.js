@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   setupEnv, startApp, createClient, createSuperadmin, csrfOf, login, logout, csrfFor,
   createClinicViaHttp, resetLoginLimiter,
+  acceptLegal,
 } from './helpers.js';
 
 setupEnv();
@@ -150,6 +151,19 @@ describe('parola', () => {
     assert.equal(ok.status, 302);
     assert.ok(ok.location.startsWith('/?ok='));
     assert.ok(sessionCookie(ok), 'parola değişimi yeni oturum çerezi vermeli');
+    // Sözleşme kapısı: klinik yöneticisi güncel sözleşmeyi kabul etmeden klinik ekranlarına giremez
+    const gated = await client.get('/');
+    assert.equal(gated.status, 302);
+    assert.equal(gated.location, '/sozlesme');
+    const contract = await client.get('/sozlesme');
+    assert.equal(contract.status, 200);
+    assert.ok(contract.text.includes('name="accept_abonelik-sozlesmesi"'));
+    assert.ok(contract.text.includes('name="accept_veri-isleyen-eki"'));
+    // Tek belge onaylanınca kabul edilmez (her belge ayrı onay)
+    const partial = await client.post('/sozlesme', { _csrf: csrfOf(contract.text), 'accept_abonelik-sozlesmesi': '1' });
+    assert.equal(partial.status, 200);
+    assert.ok(partial.text.includes('ayrı ayrı'));
+    await acceptLegal(client);
     const home2 = await client.get('/');
     assert.equal(home2.status, 200);
     assert.ok(home2.text.includes('Pati Veteriner'));

@@ -34,7 +34,11 @@ describe('tenant migrasyonları', () => {
     assert.ok(columns(db, 'sms_log').includes('kind'));
     assert.ok(columns(db, 'sms_log').includes('owner_name'));
     assert.ok(columns(db, 'reminders').includes('created_by'));
-    for (const t of ['settings', 'owners', 'pets', 'reminders', 'sms_log']) assert.ok(tables(db).includes(t), t);
+    // migrasyon 3: mevzuat uyumu
+    for (const col of ['address', 'opt_out_token']) assert.ok(columns(db, 'owners').includes(col), col);
+    assert.ok(columns(db, 'pets').includes('microchip_no'));
+    for (const col of ['legal_basis', 'iys_flag', 'identity_used', 'anonymized_at']) assert.ok(columns(db, 'sms_log').includes(col), col);
+    for (const t of ['settings', 'owners', 'pets', 'reminders', 'sms_log', 'consent_events', 'subject_requests', 'imha_log']) assert.ok(tables(db).includes(t), t);
     db.close();
   });
 
@@ -74,7 +78,8 @@ describe('master migrasyonları (geçici dosya)', () => {
     assert.ok(columns(db, 'users').includes('must_change_password'));
     assert.ok(columns(db, 'clinics').includes('sms_daily_cap'));
     assert.ok(columns(db, 'sessions').includes('last_seen_at'));
-    for (const t of ['clinics', 'users', 'sessions', 'audit_log']) assert.ok(tables(db).includes(t), t);
+    assert.ok(columns(db, 'clinics').includes('public_slug'));
+    for (const t of ['clinics', 'users', 'sessions', 'audit_log', 'legal_acceptances', 'breaches']) assert.ok(tables(db).includes(t), t);
     assert.equal(migrate(db, MASTER_MIGRATIONS), MASTER_MIGRATIONS.length);
     assert.equal(userVersion(db), MASTER_MIGRATIONS.length);
     db.close();

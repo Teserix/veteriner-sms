@@ -106,7 +106,9 @@ describe('iki klinik birbirini görmez', () => {
 describe('kaynak denetimi', () => {
   test('openTenant( yalnızca izinli dosyalarda çağrılır', () => {
     const srcDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src');
-    const allowed = new Set(['db/tenant.js', 'routes/clinic.js', 'routes/admin.js', 'scheduler.js', 'backup.js']);
+    // routes/public.js: oturumsuz ret bağlantısı ve klinik aydınlatma metni; kliniği yalnızca doğrulanmış belirteç/kısa ad belirler
+    // retention.js: periyodik imha, klinik kilidi altında
+    const allowed = new Set(['db/tenant.js', 'routes/clinic.js', 'routes/admin.js', 'routes/public.js', 'scheduler.js', 'backup.js', 'retention.js']);
     const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
       const p = path.join(dir, e.name);
       return e.isDirectory() ? walk(p) : (e.name.endsWith('.js') ? [p] : []);

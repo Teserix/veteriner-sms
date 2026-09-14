@@ -1,0 +1,43 @@
+<%- include('partials/header') %>
+<h1>Veri ihlali kayıtları</h1>
+<div class="card">
+  <div class="help">KVKK m.12/5 ve Kurul'un 24.01.2019 tarihli 2019/10 sayılı kararı: ihlal öğrenildiğinde veri sorumlusu (klinik) <strong>gecikmeksizin</strong>, Kurul <strong>en geç 72 saat</strong> içinde bilgilendirilir; etkilenen kişilere makul en kısa sürede bildirim yapılır; ihlal bilgileri, etkileri ve alınan tedbirler kayıt altına alınır. Bu ekran o kaydı tutar. Kurul bildirimi: <a href="https://ihlalbildirim.kvkk.gov.tr" target="_blank" rel="noopener">ihlalbildirim.kvkk.gov.tr</a>.</div>
+  <form method="post" action="/admin/ihlaller" class="mt10">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <div class="form-grid">
+      <div><label for="clinic_id">Etkilenen klinik</label><select id="clinic_id" name="clinic_id"><option value="">Tümü / belirsiz</option><% for (const c of clinicList) { %><option value="<%= c.id %>"><%= c.name %></option><% } %></select></div>
+      <div><label for="detected_at">Tespit zamanı *</label><input id="detected_at" type="datetime-local" name="detected_at" required></div>
+      <div><label for="occurred_at">Gerçekleşme zamanı (biliniyorsa)</label><input id="occurred_at" type="datetime-local" name="occurred_at"></div>
+      <div><label for="affected_count">Etkilenen kayıt sayısı</label><input id="affected_count" type="number" name="affected_count" inputmode="numeric" min="0"></div>
+      <div><label for="categories">Etkilenen veri kategorileri</label><input id="categories" type="text" name="categories" maxlength="300" placeholder="kimlik, iletişim, ..."></div>
+    </div>
+    <label for="source">İhlalin kaynağı ve niteliği *</label><textarea id="source" name="source" maxlength="500" rows="2" required></textarea>
+    <label for="consequences">Olası sonuçlar</label><textarea id="consequences" name="consequences" maxlength="1000" rows="2"></textarea>
+    <label for="measures">Alınan / alınacak tedbirler</label><textarea id="measures" name="measures" maxlength="1000" rows="2"></textarea>
+    <div class="form-actions"><button class="btn danger" type="submit">İhlal kaydı oluştur</button></div>
+  </form>
+</div>
+<div class="card">
+  <% if (!list.length) { %><div class="empty">Kayıtlı ihlal yok.</div><% } else { %>
+  <div class="table-wrap"><table class="cards small">
+    <thead><tr><th>#</th><th>Tespit</th><th>Kurul son bildirim</th><th>Klinik</th><th>Nitelik</th><th>Bildirimler</th></tr></thead>
+    <tbody><% for (const b of list) { %>
+      <tr>
+        <td data-label="#"><%= b.id %></td>
+        <td data-label="Tespit"><%= formatDateTime(b.detected_at) %></td>
+        <td data-label="Kurul son bildirim"><%= formatDateTime(b.deadline) %><% if (b.overdue) { %> <span class="badge failed">72 saat geçti</span><% } %></td>
+        <td data-label="Klinik"><%= b.clinic_id || 'tümü' %></td>
+        <td data-label="Nitelik"><%= b.source %><% if (b.affected_count != null) { %><br><span class="muted"><%= b.affected_count %> kayıt · <%= b.categories || '' %></span><% } %></td>
+        <td data-label="Bildirimler">
+          <% for (const [t, label, at] of [['klinik', 'Klinik', b.clinic_notified_at], ['kurul', 'Kurul', b.kurul_notified_at], ['kisiler', 'İlgili kişiler', b.subjects_notified_at]]) { %>
+            <% if (at) { %><div><span class="badge ok"><%= label %></span> <%= formatDateTime(at) %></div><% } else { %>
+            <form method="post" action="/admin/ihlaller/<%= b.id %>/bildirim" class="inline"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="target" value="<%= t %>"><button class="btn sm secondary" type="submit"><%= label %> bildirildi</button></form>
+            <% } %>
+          <% } %>
+        </td>
+      </tr>
+    <% } %></tbody>
+  </table></div>
+  <% } %>
+</div>
+<%- include('partials/footer') %>

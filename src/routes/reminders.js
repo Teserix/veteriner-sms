@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireRole } from '../auth.js';
 import { pets, reminders, getSettings } from '../db/tenant.js';
 import { sendReminderSms } from '../scheduler.js';
+import { contentProblems } from '../sms/policy.js';
 import { limiters } from '../ratelimit.js';
 import { trim, toInt, nowIso, isValidDate, todayLocal, addDays, returnTo, withFlash, REMINDER_TYPES } from '../util.js';
 
@@ -22,6 +23,13 @@ function reminderFromBody(b) {
     repeat_days: repeat > 0 ? Math.min(3650, repeat) : null,
     notes: trim(b.notes, 500) || null,
   };
+}
+
+/** Başlık SMS'e {tur} olarak girer: tarih geçerli olmalı, başlık reklam/ilaç adı/teşhis içermemeli (bkz. sms/policy.js) */
+function reminderProblem(f) {
+  if (!isValidDate(f.due_date)) return 'Geçerli bir tarih girin.';
+  const p = contentProblems(f.title);
+  return p.length ? 'Başlık SMS metnine girer: ' + p[0] : null;
 }
 
 remindersRouter.get('/hatirlatmalar', (req, res) => {
@@ -50,8 +58,9 @@ remindersRouter.post('/hayvanlar/:id/hatirlatma/yeni', (req, res) => {
   const pet = pets.get(req.db, toInt(req.params.id));
   if (!pet) return notFound(res);
   const f = reminderFromBody(req.body);
-  if (!isValidDate(f.due_date)) {
-    return res.status(400).render('reminder_form', { title: 'Yeni hatırlatma', pet, reminder: null, form: req.body, error: 'Geçerli bir tarih girin.' });
+  const problem = reminderProblem(f);
+  if (problem) {
+    return res.status(400).render('reminder_form', { title: 'Yeni hatırlatma', pet, reminder: null, form: req.body, error: problem });
   }
   reminders.create(req.db, { ...f, pet_id: pet.id, created_at: nowIso(), created_by: req.user.email });
   res.redirect(`/sahipler/${pet.owner_id}?ok=` + encodeURIComponent('Hatırlatma eklendi.'));
@@ -69,8 +78,9 @@ remindersRouter.post('/hatirlatmalar/:id/duzenle', (req, res) => {
   if (!r) return notFound(res);
   const pet = pets.get(req.db, r.pet_id);
   const f = reminderFromBody(req.body);
-  if (!isValidDate(f.due_date)) {
-    return res.status(400).render('reminder_form', { title: 'Hatırlatmayı düzenle', pet, reminder: r, form: req.body, error: 'Geçerli bir tarih girin.' });
+  const problem = reminderProblem(f);
+  if (problem) {
+    return res.status(400).render('reminder_form', { title: 'Hatırlatmayı düzenle', pet, reminder: r, form: req.body, error: problem });
   }
   reminders.update(req.db, r.id, f);
   let msg = 'Hatırlatma güncellendi.';

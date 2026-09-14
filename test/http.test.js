@@ -6,7 +6,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { setupEnv, startApp, createClient, createSuperadmin, csrfOf, resetLoginLimiter } from './helpers.js';
+import { setupEnv, startApp, createClient, createSuperadmin, csrfOf, resetLoginLimiter, acceptLegal } from './helpers.js';
 
 const dataDir = setupEnv();
 const { todayLocal } = await import('../src/util.js');
@@ -94,10 +94,22 @@ test('5) klinik yöneticisi girişi -> parola değişimi zorunlu', async () => {
   assert.equal(r.status, 200);
   r = await c.post('/sifre', { _csrf: csrf, current: 'Gecici123', password: 'YeniSifre123', password2: 'YeniSifre123' });
   assert.equal(r.status, 302); assert.ok(r.location.startsWith('/?ok='));
+  // Sözleşme kapısı: kabul edilmeden panel açılmaz
+  r = await c.get('/');
+  assert.equal(r.status, 302); assert.equal(r.location, '/sozlesme');
+  await acceptLegal(c);
   r = await c.get('/'); csrf = csrfOf(r.text);
   assert.equal(r.status, 200);
   assert.ok(r.text.includes('Özet'));
   assert.ok(r.text.includes('Pati Veteriner'));
+  // Hukuki kimlik dolana kadar gönderim kilitli uyarısı görünür; ayarlardan doldurulunca kalkar
+  assert.ok(r.text.includes('SMS gönderimi kilitli'));
+  r = await c.get('/ayarlar'); csrf = csrfOf(r.text);
+  assert.ok(r.text.includes('MERSİS numarası (16 hane) girilmemiş') || r.text.includes('İşletme türü'));
+  r = await c.post('/ayarlar', { _csrf: csrf, clinic_name: 'Pati Veteriner', clinic_phone: '0212 555 11 22', template: 'Sayın {sahip}, {hayvan} için {tarih} {tur}. {klinik}', scheduler_enabled: '1', send_hour_start: '9', send_hour_end: '20', daily_sms_limit: '200', sms_provider: 'console', sms_sender: '', legal_form: 'tacir', mersis_no: '0123456789012345', m61_declare: '1', retention_sms_days: '1095' });
+  assert.equal(r.status, 302); assert.ok(r.location.includes('ok='), r.location);
+  r = await c.get('/'); csrf = csrfOf(r.text);
+  assert.ok(!r.text.includes('SMS gönderimi kilitli'));
 });
 
 test('6) hızlı kayıt: bugün vadeli, notify 0; mükerrer telefon mevcut sahibe eklenir', async () => {
@@ -130,10 +142,10 @@ test('ek) CSV dışa aktarma (yönetici): BOM, başlık ve sahip satırı', asyn
   assert.deepEqual([...r.bytes.slice(0, 3)], [0xef, 0xbb, 0xbf], 'UTF-8 BOM');
   assert.equal(r.text.charCodeAt(0), 0xfeff);
   const lines = r.text.slice(1).split('\r\n');
-  assert.equal(lines[0], 'Sahip;Telefon;E-posta;SMS;Hayvan;Tür;Irk;Cinsiyet;Doğum');
+  assert.equal(lines[0], 'Sahip;Telefon;E-posta;Adres;SMS;Hayvan;Tür;Irk;Cinsiyet;Doğum;Mikroçip');
   assert.equal(lines.length, 3); // başlık + Boncuk + Zeytin
-  assert.ok(lines[1].startsWith('Mehmet Kaya;0532 123 45 67;;Evet;Boncuk;Kedi;'));
-  assert.ok(lines[2].startsWith('Mehmet Kaya;0532 123 45 67;;Evet;Zeytin;Köpek;'));
+  assert.ok(lines[1].startsWith('Mehmet Kaya;0532 123 45 67;;;Evet;Boncuk;Kedi;'));
+  assert.ok(lines[2].startsWith('Mehmet Kaya;0532 123 45 67;;;Evet;Zeytin;Köpek;'));
 });
 
 test('7) elle gönderim; SMS geçmişi; ikinci gönderim engellenir', async () => {
@@ -158,15 +170,20 @@ test('9) ayarlar: kaydet, kimlik bilgisi, test SMS ve günlük tavan', async () 
   let r = await c.get('/ayarlar'); csrf = csrfOf(r.text);
   assert.equal(r.status, 200);
   assert.ok(r.text.includes('İleti Merkezi'));
-  r = await c.post('/ayarlar', { _csrf: csrf, clinic_name: 'Pati Veteriner', clinic_phone: '0212', template: 'Sayın {sahip}, {hayvan} için {tarih} {tur}. {klinik}', scheduler_enabled: '1', send_hour_start: '9', send_hour_end: '20', daily_sms_limit: '2', sms_provider: 'netgsm', sms_sender: 'PATI VET', cred_netgsm_usercode: 'u', cred_netgsm_password: 'p' });
+  r = await c.post('/ayarlar', { _csrf: csrf, clinic_name: 'Pati Veteriner', clinic_phone: '0212', template: 'Sayın {sahip}, {hayvan} için {tarih} {tur}. {klinik}', scheduler_enabled: '1', send_hour_start: '9', send_hour_end: '20', daily_sms_limit: '2', sms_provider: 'netgsm', sms_sender: 'PATI VET', cred_netgsm_usercode: 'u', cred_netgsm_password: 'p', legal_form: 'tacir', mersis_no: '0123456789012345' });
+  assert.equal(r.status, 302); assert.ok(r.location.includes('ok='), r.location);
+  // reklam ifadesi içeren şablon reddedilir (6343 m.9 / TVHB m.97)
+  r = await c.post('/ayarlar', { _csrf: csrf, clinic_name: 'Pati Veteriner', clinic_phone: '0212', template: 'Sayın {sahip}, bu ay aşıda %20 indirim!', scheduler_enabled: '1', send_hour_start: '9', send_hour_end: '20', daily_sms_limit: '2', sms_provider: 'netgsm', sms_sender: 'PATI VET', legal_form: 'tacir', mersis_no: '0123456789012345' });
+  assert.ok(decodeURIComponent(r.location).includes('indirim'), r.location);
+  r = await c.post('/ayarlar', { _csrf: csrf, clinic_name: 'Pati Veteriner', clinic_phone: '0212', template: 'Sayın {sahip}, {hayvan} için {tarih} {tur}. {klinik}', scheduler_enabled: '1', send_hour_start: '9', send_hour_end: '20', daily_sms_limit: '2', sms_provider: 'netgsm', sms_sender: 'PATI VET', legal_form: 'tacir', mersis_no: '0123456789012345' });
   assert.equal(r.status, 302); assert.ok(r.location.includes('ok='), r.location);
   r = await c.get('/ayarlar');
   assert.ok(r.text.includes('kayıtlı'));
   assert.ok(!r.text.includes('cred_netgsm_password" value="p"'), 'kimlik bilgisi sayfada görünmez');
   // geçersiz başlık reddedilir
-  r = await c.post('/ayarlar', { _csrf: csrf, clinic_name: 'Pati', clinic_phone: '', template: 'x', scheduler_enabled: '1', send_hour_start: '9', send_hour_end: '20', daily_sms_limit: '2', sms_provider: 'netgsm', sms_sender: 'COK UZUN BASLIK 123' });
+  r = await c.post('/ayarlar', { _csrf: csrf, clinic_name: 'Pati', clinic_phone: '', template: 'x', scheduler_enabled: '1', send_hour_start: '9', send_hour_end: '20', daily_sms_limit: '2', sms_provider: 'netgsm', sms_sender: 'COK UZUN BASLIK 123', legal_form: 'tacir', mersis_no: '0123456789012345' });
   assert.ok(r.location.includes('err='), r.location);
-  r = await c.post('/ayarlar', { _csrf: csrf, clinic_name: 'Pati', clinic_phone: '', template: 'x', scheduler_enabled: '1', send_hour_start: '9', send_hour_end: '20', daily_sms_limit: '2', sms_provider: 'console', sms_sender: '' });
+  r = await c.post('/ayarlar', { _csrf: csrf, clinic_name: 'Pati', clinic_phone: '0212', template: 'x', scheduler_enabled: '1', send_hour_start: '9', send_hour_end: '20', daily_sms_limit: '2', sms_provider: 'console', sms_sender: '', legal_form: 'tacir', mersis_no: '0123456789012345' });
   assert.equal(r.status, 302);
   r = await c.post('/ayarlar/test', { _csrf: csrf, phone: '05001112233' });
   assert.ok(r.location.includes('ok='), r.location);

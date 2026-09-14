@@ -1,0 +1,6 @@
+<%- include('partials/header') %>
+<article class="card legal">
+  <%- doc.html %>
+  <p class="muted small mt24">Belge: <%= doc.slug %> · Sürüm <%= doc.version %> · Özet (SHA-256): <code><%= doc.sha256.slice(0, 16) %>…</code></p>
+</article>
+<%- include('partials/footer') %>

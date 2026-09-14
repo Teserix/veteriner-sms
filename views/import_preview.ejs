@@ -12,7 +12,13 @@
     <% if (canApply) { %>
     <form method="post" action="/iceaktar/<%= token %>/onayla" data-confirm="<%= counts.new_owner %> yeni sahip ve <%= counts.new_owner + counts.add_pet %> hayvan eklenecek. Onaylıyor musunuz?">
       <input type="hidden" name="_csrf" value="<%= csrf %>">
-      <button class="btn" type="submit">Onayla ve içe aktar</button>
+      <fieldset class="mt0">
+        <legend><strong>SMS tercihi beyanı</strong> (zorunlu)</legend>
+        <label class="checkbox"><input type="radio" name="consent_declaration" value="own" required> Bu listedeki kişiler kliniğimizin hastasıdır; iletişim bilgilerini bizimle iletişim kurulması için kendileri vermiştir. Hatırlatma SMS'leri <strong>açık</strong> başlasın.</label>
+        <label class="checkbox"><input type="radio" name="consent_declaration" value="unknown" required> Emin değilim / üçüncü kaynaktan alınmış liste. SMS <strong>kapalı</strong> başlasın; her hasta kliniğe geldiğinde tek tek açılır.</label>
+        <div class="help">Beyan, tarih ve kullanıcı adınızla her kayda işlenir (Ticari İletişim Yön. m.6/1, m.13/1). Hastanız olmayan kişilere hatırlatma göndermek onaysız ticari ileti sayılır.</div>
+      </fieldset>
+      <button class="btn mt10" type="submit">Onayla ve içe aktar</button>
     </form>
     <% } else { %>
     <span class="muted small">Aktarılacak yeni kayıt yok.</span>

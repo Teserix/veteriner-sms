@@ -14,11 +14,14 @@ document.addEventListener('submit', function (e) {
     sahip: 'Ayşe Yılmaz', hayvan: 'Boncuk', tarih: '15.10.2026', tur: 'Kuduz aşısı',
     klinik: out.dataset.clinic || 'Kliniğiniz', klinik_tel: out.dataset.phone || '0212 000 00 00',
   };
+  // Sunucunun eklediği kuyruk: "Bilgilendirme:" + kimlik + iptal satırı (src/sms/policy.js ile aynı biçim)
+  var tail = [out.dataset.identity || '', out.dataset.optout || ''].filter(Boolean).join(' ');
   function render() {
-    var t = ta.value.replace(/\{(\w+)\}/g, function (m, k) { return sample[k] != null ? sample[k] : m; });
+    var body = ta.value.replace(/\{(\w+)\}/g, function (m, k) { return sample[k] != null ? sample[k] : m; }).replace(/\s+/g, ' ').trim();
+    var t = 'Bilgilendirme: ' + body + (tail ? ' ' + tail : '');
     out.textContent = t;
     var len = document.getElementById('template-len');
-    if (len) len.textContent = t.length + ' karakter';
+    if (len) len.textContent = t.length + ' karakter (kuyruk dahil)';
   }
   ta.addEventListener('input', render);
   render();

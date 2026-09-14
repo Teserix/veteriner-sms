@@ -1,22 +1,53 @@
 <%- include('partials/header') %>
 <h1>Ayarlar</h1>
+<% if (legalIssues.length) { %>
+  <div class="warnbox"><strong>SMS gönderimi kilitli.</strong> Hatırlatma gönderilebilmesi için aşağıdaki hukuki kimlik bölümü tamamlanmalı:
+    <ul class="mt10"><% for (const p of legalIssues) { %><li><%= p %></li><% } %></ul>
+  </div>
+<% } %>
 <form method="post" action="/ayarlar">
   <input type="hidden" name="_csrf" value="<%= csrf %>">
   <div class="card">
     <h2 class="mt0">Klinik bilgileri</h2>
     <div class="form-grid">
       <div><label for="clinic_name">Klinik adı</label><input id="clinic_name" type="text" name="clinic_name" maxlength="80" value="<%= settings.clinic_name %>"></div>
-      <div><label for="clinic_phone">Klinik telefonu</label><input id="clinic_phone" type="tel" name="clinic_phone" maxlength="30" inputmode="tel" autocomplete="off" value="<%= settings.clinic_phone %>"></div>
+      <div><label for="clinic_phone">Klinik telefonu *</label><input id="clinic_phone" type="tel" name="clinic_phone" maxlength="30" inputmode="tel" autocomplete="off" value="<%= settings.clinic_phone %>">
+        <div class="help">Her SMS'in sonuna eklenir (Ticari İletişim Yön. m.8/5: erişilebilir iletişim bilgisi).</div></div>
     </div>
+  </div>
+
+  <div class="card" id="hukuki-kimlik">
+    <h2 class="mt0">Hukuki kimlik</h2>
+    <div class="help">Kısa mesajda gönderenin kimliği zorunludur: tacirler için MERSİS numarası, esnaflar için ad-soyad ile vergi/T.C. kimlik numarası (Ticari İletişim ve Ticari Elektronik İletiler Hakkında Yönetmelik m.8/3). Bu satır her SMS'in sonuna sistem tarafından eklenir.</div>
+    <div class="form-grid mt10">
+      <div><label for="legal_form">İşletme türü *</label>
+        <select id="legal_form" name="legal_form">
+          <option value="" <%= !settings.legal_form ? 'selected' : '' %>>Seçin</option>
+          <option value="tacir" <%= settings.legal_form === 'tacir' ? 'selected' : '' %>>Tacir (şirket / ticaret siciline kayıtlı)</option>
+          <option value="esnaf" <%= settings.legal_form === 'esnaf' ? 'selected' : '' %>>Esnaf / şahıs işletmesi</option>
+        </select></div>
+      <div><label for="mersis_no">MERSİS numarası (tacir)</label><input id="mersis_no" type="text" name="mersis_no" inputmode="numeric" maxlength="16" pattern="[0-9]{16}" value="<%= settings.mersis_no %>"></div>
+      <div><label for="tax_id">Vergi kimlik / T.C. kimlik no (esnaf)</label><input id="tax_id" type="text" name="tax_id" inputmode="numeric" maxlength="11" pattern="[0-9]{10,11}" value="<%= settings.tax_id %>"></div>
+      <div><label for="ruhsat_isim">Ruhsattaki işletme adı (esnaf)</label><input id="ruhsat_isim" type="text" name="ruhsat_isim" maxlength="80" value="<%= settings.ruhsat_isim %>"></div>
+      <div><label for="kvkk_contact_email">KVKK başvuru e-postası</label><input id="kvkk_contact_email" type="email" name="kvkk_contact_email" maxlength="120" value="<%= settings.kvkk_contact_email %>"></div>
+      <div><label for="kvkk_contact_phone">KVKK başvuru telefonu</label><input id="kvkk_contact_phone" type="tel" name="kvkk_contact_phone" maxlength="30" value="<%= settings.kvkk_contact_phone %>"></div>
+    </div>
+    <div class="help">KVKK başvuru bilgileri hasta sahiplerine gösterilen aydınlatma metninde yer alır (KVKK m.10, m.13).</div>
+    <% if (settings.m61_declared_at) { %>
+      <div class="help mt10"><span class="badge ok">Beyan verildi</span> <%= formatDateTime(settings.m61_declared_at) %> — Hasta sahiplerinin iletişim bilgilerini kendileriyle iletişim kurulması amacıyla verdiği ve iletilerin yalnızca bu klinikte temin edilen hizmetlere ilişkin bakım hatırlatması olduğu beyan edilmiştir (Yön. m.6/1).</div>
+    <% } else { %>
+      <label class="checkbox mt10"><input type="checkbox" name="m61_declare" value="1"> Hasta sahipleri iletişim bilgilerini kliniğimizle iletişim kurulması amacıyla vermiştir; gönderilecek iletiler yalnızca bu klinikte temin edilen hizmetlere ilişkin değişiklik, kullanım ve bakım (aşı, kontrol, parazit) hatırlatmasıdır; tanıtım veya kampanya içermez. *</label>
+      <div class="help">Bu beyan, hatırlatma SMS'lerinin önceden onay ve İYS kontrolü gerektirmeden gönderilebilmesinin dayanağıdır (Yön. m.6/1, m.6/5, m.11/8). Kampanya/indirim içeren mesaj bu kapsama girmez ve sistem tarafından reddedilir.</div>
+    <% } %>
   </div>
 
   <div class="card">
     <h2 class="mt0">SMS şablonu</h2>
     <label for="template">Mesaj metni</label>
     <textarea id="template" name="template" maxlength="320" rows="4"><%= settings.template %></textarea>
-    <div class="help">Kullanılabilir alanlar: {sahip} {hayvan} {tarih} {tur} {klinik} {klinik_tel}. Türkçe karakter kullanılırsa tek SMS 70 karakterdir; uzun mesaj birden çok SMS olarak ücretlendirilir.</div>
+    <div class="help">Kullanılabilir alanlar: {sahip} {hayvan} {tarih} {tur} {klinik} {klinik_tel}. Başa "Bilgilendirme:", sona kimlik ve iptal satırı sistemce eklenir; indirim, kampanya, ilaç adı ve teşhis ifadeleri kabul edilmez (veteriner hekim reklam yasağı, 6343 m.9; TVHB Uyg. Yön. m.97, m.68). Türkçe karakter kullanılırsa tek SMS 70 karakterdir; uzun mesaj birden çok SMS olarak ücretlendirilir.</div>
     <label>Önizleme <span id="template-len" class="muted small"></span></label>
-    <div id="template-preview" class="pre small preview-box" data-clinic="<%= settings.clinic_name %>" data-phone="<%= settings.clinic_phone %>"></div>
+    <div id="template-preview" class="pre small preview-box" data-clinic="<%= settings.clinic_name %>" data-phone="<%= settings.clinic_phone %>" data-identity="<%= identityPreview %>" data-optout="<%= optOutPreview %>"></div>
   </div>
 
   <div class="card">
@@ -29,6 +60,15 @@
         <div class="help">Beklenmedik harcamaya karşı emniyet. Sistem tavanı: <%= clinicCap %>. Sınıra ulaşınca kalan gönderimler ertesi güne kalır.</div></div>
     </div>
     <div class="help">Türkiye saatine göre. Bu aralık dışında SMS gönderilmez, bir sonraki uygun saatte gönderilir.</div>
+  </div>
+
+  <div class="card">
+    <h2 class="mt0">Saklama ve imha</h2>
+    <div class="form-grid">
+      <div><label for="retention_sms_days">SMS kayıtlarında kişisel bilgilerin saklama süresi (gün)</label>
+        <input id="retention_sms_days" type="number" name="retention_sms_days" inputmode="numeric" min="1095" max="3650" value="<%= settings.retention_sms_days %>">
+        <div class="help">En az 1095 gün (3 yıl): ticari elektronik ileti kayıtları üç yıl saklanmak zorundadır (Yön. m.13/2). Süre dolunca telefon, mesaj ve ad alanları otomatik anonimleştirilir; satır (tarih, durum, sağlayıcı referansı) 10 yıl kayıt yükümlülüğü için kalır (6563 m.11/3). İmha turları kayıt altına alınır.</div></div>
+    </div>
   </div>
 
   <div class="card">
@@ -65,5 +105,46 @@
     <button class="btn secondary" type="submit">Test gönder</button>
   </form>
   <div class="help">Kayıtlı sağlayıcı ile "Test mesajı" gönderir; sonuç SMS geçmişine yazılır. Saatte en fazla 5 test.</div>
+</div>
+
+<div class="card mt24">
+  <h2 class="mt0">Hasta sahibi aydınlatma metni</h2>
+  <% if (noticeUrl) { %>
+    <p class="small">Kliniğinize özel, herkese açık aydınlatma metni: <a href="<%= noticeUrl %>" target="_blank" rel="noopener"><%= noticeUrl %></a></p>
+    <div class="help">Bu bağlantıyı kayıt formunuza, bekleme salonuna (QR) ve web sitenize koyun. Metin, yukarıdaki KVKK başvuru bilgileri ve klinik adıyla otomatik doldurulur (KVKK m.10; Aydınlatma Tebliği m.4-5). Aydınlatmanın yapıldığını ispat yükü kliniktedir.</div>
+  <% } else { %>
+    <div class="help">Herkese açık bağlantı henüz üretilmemiş; sistem yöneticisiyle iletişime geçin.</div>
+  <% } %>
+</div>
+
+<div class="card mt24">
+  <h2 class="mt0">Sözleşmeler</h2>
+  <% if (acceptances.length) { %>
+    <div class="table-wrap"><table class="cards">
+      <thead><tr><th>Belge</th><th>Sürüm</th><th>Kabul tarihi</th><th></th></tr></thead>
+      <tbody><% for (const a of acceptances) { %>
+        <tr><td data-label="Belge"><%= a.title %></td><td data-label="Sürüm"><%= a.version %></td><td data-label="Kabul"><%= formatDateTime(a.accepted_at) %></td>
+          <td><a href="/belgeler/<%= a.slug %>" target="_blank" rel="noopener">Görüntüle</a></td></tr>
+      <% } %></tbody>
+    </table></div>
+  <% } else { %><div class="help">Henüz kabul edilmiş sözleşme yok.</div><% } %>
+</div>
+
+<div class="card mt24">
+  <h2 class="mt0">Erişim yetki matrisi</h2>
+  <div class="help">Kişisel Veri Güvenliği Rehberi §3.1 uyarınca rollerin erişim yetkileri. Sistem yöneticisi (Teserix) hasta verisi ekranlarına giremez; yalnızca klinik açma/kapama, kullanıcı parolası sıfırlama ve denetim günlüğü yetkisine sahiptir.</div>
+  <div class="table-wrap"><table class="cards small">
+    <thead><tr><th>Veri</th><th>Klinik yöneticisi</th><th>Personel</th><th>Sistem yöneticisi</th></tr></thead>
+    <tbody>
+      <tr><td data-label="Veri">Hasta sahipleri / hayvanlar</td><td data-label="Yönetici">oku, yaz, sil, dışa aktar</td><td data-label="Personel">oku, yaz</td><td data-label="Sistem">—</td></tr>
+      <tr><td data-label="Veri">Hatırlatmalar</td><td data-label="Yönetici">oku, yaz, sil, gönder</td><td data-label="Personel">oku, yaz, gönder</td><td data-label="Sistem">—</td></tr>
+      <tr><td data-label="Veri">SMS geçmişi</td><td data-label="Yönetici">oku</td><td data-label="Personel">oku</td><td data-label="Sistem">—</td></tr>
+      <tr><td data-label="Veri">SMS tercihi (ret)</td><td data-label="Yönetici">değiştir</td><td data-label="Personel">değiştir</td><td data-label="Sistem">—</td></tr>
+      <tr><td data-label="Veri">İlgili kişi başvuruları</td><td data-label="Yönetici">oku, yaz, kapat</td><td data-label="Personel">oku, yaz</td><td data-label="Sistem">—</td></tr>
+      <tr><td data-label="Veri">Ayarlar, sağlayıcı bilgileri, içe aktarma</td><td data-label="Yönetici">oku, yaz</td><td data-label="Personel">—</td><td data-label="Sistem">—</td></tr>
+      <tr><td data-label="Veri">Kullanıcılar</td><td data-label="Yönetici">oku, yaz, sil</td><td data-label="Personel">—</td><td data-label="Sistem">parola sıfırlama (kayıtlı)</td></tr>
+      <tr><td data-label="Veri">Denetim günlüğü</td><td data-label="Yönetici">—</td><td data-label="Personel">—</td><td data-label="Sistem">oku</td></tr>
+    </tbody>
+  </table></div>
 </div>
 <%- include('partials/footer') %>

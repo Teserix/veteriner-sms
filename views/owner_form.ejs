@@ -19,9 +19,20 @@
         <input id="email" type="email" name="email" maxlength="120" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="next" value="<%= form.email || '' %>">
       </div>
     </div>
+    <label for="address">Adres</label>
+    <input id="address" type="text" name="address" maxlength="300" autocomplete="off" value="<%= form.address || '' %>">
+    <div class="help">Muayenehane kayıt defteri (Ek-4) sahip adresini ister; isteğe bağlıdır.</div>
     <label for="notes">Not</label>
     <textarea id="notes" name="notes" maxlength="1000"><%= form.notes || '' %></textarea>
-    <label class="checkbox"><input type="checkbox" name="sms_opt_in" value="1" <%= form.sms_opt_in === undefined || form.sms_opt_in ? 'checked' : '' %>> SMS hatırlatması gönderilsin</label>
+    <div class="help">Hasta sahibinin sağlık, din vb. özel nitelikli verilerini buraya yazmayın.</div>
+    <label class="checkbox"><input type="checkbox" name="sms_opt_in" value="1" <%= form.sms_opt_in === undefined || form.sms_opt_in ? 'checked' : '' %>> Hatırlatma SMS'i gönderilsin</label>
+    <div class="form-grid">
+      <div><label for="consent_channel">Tercih nasıl alındı?</label>
+        <select id="consent_channel" name="consent_channel">
+          <% for (const [k, label] of Object.entries(channels)) { if (k === 'ret_url' || k === 'ice_aktarma') continue; %><option value="<%= k %>" <%= (form.consent_channel || 'panel') === k ? 'selected' : '' %>><%= label %></option><% } %>
+        </select></div>
+    </div>
+    <div class="help">Dayanak: hasta sahibi iletişim bilgisini kliniğinizle iletişim kurulması için verdi; hatırlatmalar bu hizmete ilişkin bakım bilgilendirmesidir (Ticari İletişim Yön. m.6/1). Bu bir pazarlama onayı değildir. Her değişiklik tarih, kanal ve kullanıcıyla kaydedilir.</div>
     <div class="form-actions">
       <button class="btn" type="submit">Kaydet</button>
       <a class="btn secondary" href="<%= owner ? '/sahipler/' + owner.id : '/sahipler' %>">Vazgeç</a>

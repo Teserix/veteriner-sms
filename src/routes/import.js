@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { randomToken, safeEqual } from '../crypto.js';
-import { limiters } from '../ratelimit.js';
+import { limiters, clientIp } from '../ratelimit.js';
 import { audit } from '../audit.js';
 import { log } from '../log.js';
 import { withFlash, toInt } from '../util.js';
@@ -165,10 +165,19 @@ importRouter.get('/:token/onizle', loadBatch, (req, res) => {
 importRouter.post('/:token/onayla', loadBatch, (req, res) => {
   const b = req.batch;
   if (!b.mapping) return res.redirect(`/iceaktar/${req.batchToken}/eslestir`);
+  // Onay beyanı zorunlu (Ticari İletişim Yön. m.6/1 şartı ve m.13/1 ispat): listedekiler iletişim bilgisini kliniğe kendileri verdi mi?
+  const declaration = req.body.consent_declaration;
+  if (declaration !== 'own' && declaration !== 'unknown') {
+    return res.redirect(withFlash(`/iceaktar/${req.batchToken}/onizle`, 'err', 'Devam etmek için listedeki kişilerin SMS tercihine ilişkin beyanı seçin.'));
+  }
+  const smsOptIn = declaration === 'own' ? 1 : 0;
+  const consentNote = declaration === 'own'
+    ? `Klinik beyanı: kişiler iletişim bilgisini kliniğe kendileri verdi (dosya: ${String(b.filename || '').slice(0, 80)})`
+    : 'İçe aktarmada tercih bilinmiyor; SMS kapalı başlatıldı';
   const classified = classifyRows(req.db, b.rows, b.mapping, b.lines);
-  const counts = applyImport(req.db, classified, { batchToken: req.batchToken, createdBy: req.user.email });
+  const counts = applyImport(req.db, classified, { batchToken: req.batchToken, smsOptIn, consentNote, actorEmail: req.user.email, ip: clientIp(req) });
   _batches.delete(req.batchToken);
-  audit(req, 'import.apply', { meta: { ...counts, rows: classified.length } });
+  audit(req, 'import.apply', { meta: { ...counts, rows: classified.length, consent: declaration } });
   log.info('içe aktarma tamamlandı', { clinicId: req.user.clinicId, ...counts });
   const msg = `İçe aktarma tamamlandı: ${counts.owners} yeni sahip, ${counts.pets} hayvan eklendi; ${counts.skipped} satır zaten kayıtlıydı, ${counts.errors} satır hatalı.`;
   res.redirect(withFlash('/sahipler', 'ok', msg));

@@ -1,0 +1,15 @@
+<%- include('partials/header') %>
+<div class="card narrow">
+  <h1 class="mt0">Hatırlatma SMS'lerini durdur</h1>
+  <p><strong><%= clinicName %></strong> tarafından gönderilen aşı/kontrol hatırlatma mesajlarını almak istemiyorsanız aşağıdaki düğmeye basın.</p>
+  <% if (alreadyOff) { %>
+    <div class="flash ok">Bu numaraya hatırlatma gönderimi zaten kapalı.</div>
+  <% } else { %>
+    <form method="post" action="/ret/<%= token %>">
+      <input type="hidden" name="_csrf" value="<%= pre %>">
+      <button class="btn" type="submit">Hatırlatma SMS'lerini durdur</button>
+    </form>
+  <% } %>
+  <p class="help mt10">Bu işlem ücretsizdir ve en geç 3 iş günü içinde uygulanır (Ticari İletişim ve Ticari Elektronik İletiler Hakkında Yönetmelik m.9-10). Yeniden hatırlatma almak isterseniz kliniğinizi arayabilirsiniz<% if (clinicPhone) { %>: <a href="tel:<%= clinicPhone.replace(/\s/g, '') %>"><%= clinicPhone %></a><% } %>.</p>
+</div>
+<%- include('partials/footer') %>

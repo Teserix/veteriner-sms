@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Router } from 'express';
 import { hashPassword, passwordProblem, generatePassword } from '../auth.js';
-import { clinics, users, sessions, auditLog, master } from '../db/master.js';
+import { clinics, users, sessions, auditLog, master, breaches, legalAcceptances } from '../db/master.js';
 import { openTenant, closeTenant, setSetting, tenantPath } from '../db/tenant.js';
 import { config } from '../config.js';
 import { randomId } from '../crypto.js';
@@ -23,7 +23,17 @@ function listView(res, { error = null, form = {}, status = 200 } = {}) {
 }
 
 function detailView(res, clinic, { tempPassword = null, tempFor = null, error = null, status = 200 } = {}) {
-  res.status(status).render('admin_detail', { title: clinic.name, clinic, userList: users.byClinic(clinic.id), tempPassword, tempFor, error });
+  res.status(status).render('admin_detail', {
+    title: clinic.name, clinic, userList: users.byClinic(clinic.id), tempPassword, tempFor, error,
+    acceptances: legalAcceptances.byClinic(clinic.id),
+  });
+}
+
+/** Eski kliniklerde (migrasyon 3 öncesi) kısa ad yoktur; ilk görüntülemede üretilir */
+function ensureSlug(clinic) {
+  if (clinic.public_slug) return clinic;
+  clinics.setSlug(clinic.id, randomId(6));
+  return clinics.get(clinic.id);
 }
 
 adminRouter.get('/', (req, res) => listView(res));
@@ -52,6 +62,7 @@ adminRouter.post('/klinik', async (req, res) => {
   master.exec('BEGIN');
   try {
     clinics.create(id, form.clinic_name, form.clinic_phone, now);
+    clinics.setSlug(id, randomId(6)); // hasta sahibi aydınlatma metni için herkese açık kısa ad (klinik kimliğini ifşa etmez)
     users.create({ clinicId: id, email: form.admin_email, name: form.admin_name, passwordHash: hash, role: 'admin', createdAt: now, mustChangePassword: 1 });
     master.exec('COMMIT');
   } catch (e) {
@@ -81,7 +92,43 @@ function loadClinic(req, res) {
 
 adminRouter.get('/klinik/:id', (req, res) => {
   const c = loadClinic(req, res);
-  if (c) detailView(res, c);
+  if (c) detailView(res, ensureSlug(c));
+});
+
+/* ---------- Veri ihlali kayıtları (KVKK m.12/5; Kurul 2019/10: 72 saat, kayıt altına alınır) ---------- */
+adminRouter.get('/ihlaller', (req, res) => {
+  const list = breaches.all().map((b) => {
+    const detected = new Date(b.detected_at).getTime();
+    const deadline = new Date(detected + 72 * 3600 * 1000).toISOString();
+    return { ...b, deadline, overdue: !b.kurul_notified_at && Date.now() > detected + 72 * 3600 * 1000 };
+  });
+  res.render('admin_breach', { title: 'Veri ihlali kayıtları', list, clinicList: clinics.all(), error: null });
+});
+
+adminRouter.post('/ihlaller', (req, res) => {
+  const b = req.body;
+  const clinicId = b.clinic_id ? String(b.clinic_id) : null;
+  if (clinicId && !clinics.get(clinicId)) return res.redirect('/admin/ihlaller?err=' + encodeURIComponent('Klinik bulunamadı.'));
+  const detected = trim(b.detected_at, 25);
+  if (Number.isNaN(new Date(detected).getTime())) return res.redirect('/admin/ihlaller?err=' + encodeURIComponent('Tespit zamanı geçersiz.'));
+  const source = trim(b.source, 500);
+  if (!source) return res.redirect('/admin/ihlaller?err=' + encodeURIComponent('İhlalin kaynağı/niteliği zorunlu.'));
+  const id = breaches.add({
+    clinic_id: clinicId, detected_at: new Date(detected).toISOString(), occurred_at: b.occurred_at ? new Date(trim(b.occurred_at, 25)).toISOString() : null,
+    source, affected_count: toInt(b.affected_count) ?? null, categories: trim(b.categories, 300) || null,
+    consequences: trim(b.consequences, 1000) || null, measures: trim(b.measures, 1000) || null, created_by: req.user.email, created_at: nowIso(),
+  });
+  audit(req, 'breach.create', { clinicId, entityType: 'breach', entityId: id });
+  res.redirect('/admin/ihlaller?ok=' + encodeURIComponent('İhlal kaydı oluşturuldu. Veri sorumlusu (klinik) gecikmeksizin, Kurul 72 saat içinde bilgilendirilmeli.'));
+});
+
+adminRouter.post('/ihlaller/:id/bildirim', (req, res) => {
+  const id = toInt(req.params.id);
+  const field = { klinik: 'clinic_notified_at', kurul: 'kurul_notified_at', kisiler: 'subjects_notified_at' }[req.body.target];
+  if (!breaches.get(id) || !field) return res.redirect('/admin/ihlaller?err=' + encodeURIComponent('Kayıt bulunamadı.'));
+  breaches.setNotified(id, field, nowIso());
+  audit(req, 'breach.notify', { entityType: 'breach', entityId: id, meta: { target: req.body.target } });
+  res.redirect('/admin/ihlaller?ok=' + encodeURIComponent('Bildirim zamanı kaydedildi.'));
 });
 
 adminRouter.post('/klinik/:id/durum', (req, res) => {

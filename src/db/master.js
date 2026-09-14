@@ -63,6 +63,39 @@ export const MASTER_MIGRATIONS = [
   CREATE INDEX IF NOT EXISTS idx_audit_clinic ON audit_log(clinic_id, id DESC);
   CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action, created_at);
   `,
+  // 3: mevzuat uyumu — sözleşme kabul kayıtları, veri ihlali kayıtları, kliniğin aydınlatma metni için herkese açık kısa ad
+  `
+  ALTER TABLE clinics ADD COLUMN public_slug TEXT;
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_clinics_slug ON clinics(public_slug);
+  CREATE TABLE IF NOT EXISTS legal_acceptances (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL,
+    clinic_id    TEXT,
+    slug         TEXT NOT NULL,
+    version      TEXT NOT NULL,
+    doc_sha256   TEXT NOT NULL,
+    accepted_at  TEXT NOT NULL,
+    ip           TEXT,
+    user_agent   TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_legal_clinic ON legal_acceptances(clinic_id, slug, id DESC);
+  CREATE TABLE IF NOT EXISTS breaches (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    clinic_id             TEXT,
+    detected_at           TEXT NOT NULL,
+    occurred_at           TEXT,
+    source                TEXT,
+    affected_count        INTEGER,
+    categories            TEXT,
+    consequences          TEXT,
+    measures              TEXT,
+    clinic_notified_at    TEXT,
+    kurul_notified_at     TEXT,
+    subjects_notified_at  TEXT,
+    created_by            TEXT,
+    created_at            TEXT NOT NULL
+  );
+  `,
 ];
 
 export const master = new DatabaseSync(path.join(config.dataDir, 'master.db'), { timeout: 5000 });
@@ -81,6 +114,30 @@ export const clinics = {
       .run(name, phone, smsDailyCap, new Date().toISOString(), id),
   delete: (id) => master.prepare('DELETE FROM clinics WHERE id = ?').run(id),
   userCount: (id) => master.prepare('SELECT COUNT(*) AS c FROM users WHERE clinic_id = ?').get(id).c,
+  bySlug: (slug) => master.prepare('SELECT * FROM clinics WHERE public_slug = ?').get(slug),
+  setSlug: (id, slug) => master.prepare('UPDATE clinics SET public_slug = ? WHERE id = ?').run(slug, id),
+};
+
+/* ---------- Sözleşme kabulleri (TBK m.21 ispat; 6563 m.11/3: 10 yıl saklanır, imha edilmez) ---------- */
+export const legalAcceptances = {
+  add: (r) => master.prepare(`INSERT INTO legal_acceptances (user_id, clinic_id, slug, version, doc_sha256, accepted_at, ip, user_agent)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(r.user_id, r.clinic_id ?? null, r.slug, r.version, r.doc_sha256, r.accepted_at, r.ip ?? null, r.user_agent ?? null).lastInsertRowid,
+  latest: (clinicId, slug) => master.prepare('SELECT * FROM legal_acceptances WHERE clinic_id = ? AND slug = ? ORDER BY id DESC LIMIT 1').get(clinicId, slug),
+  byClinic: (clinicId) => master.prepare('SELECT * FROM legal_acceptances WHERE clinic_id = ? ORDER BY id DESC LIMIT 50').all(clinicId),
+};
+
+/* ---------- Veri ihlali kayıtları (KVKK m.12/5; Kurul 2019/10: 72 saat, kayıt altına alınır) ---------- */
+export const breaches = {
+  add: (r) => master.prepare(`INSERT INTO breaches (clinic_id, detected_at, occurred_at, source, affected_count, categories, consequences, measures,
+    clinic_notified_at, kurul_notified_at, subjects_notified_at, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(r.clinic_id ?? null, r.detected_at, r.occurred_at ?? null, r.source ?? null, r.affected_count ?? null, r.categories ?? null, r.consequences ?? null,
+      r.measures ?? null, r.clinic_notified_at ?? null, r.kurul_notified_at ?? null, r.subjects_notified_at ?? null, r.created_by ?? null, r.created_at).lastInsertRowid,
+  get: (id) => master.prepare('SELECT * FROM breaches WHERE id = ?').get(id),
+  all: () => master.prepare('SELECT * FROM breaches ORDER BY id DESC LIMIT 200').all(),
+  setNotified: (id, field, at) => {
+    if (!['clinic_notified_at', 'kurul_notified_at', 'subjects_notified_at'].includes(field)) throw new Error('Geçersiz alan');
+    return master.prepare(`UPDATE breaches SET ${field} = ? WHERE id = ?`).run(at, id).changes;
+  },
 };
 
 export const users = {
@@ -127,4 +184,7 @@ export const auditLog = {
     : master.prepare('SELECT * FROM audit_log ORDER BY id DESC LIMIT ?').all(limit),
   existsSince: (clinicId, action, sinceIso) =>
     Boolean(master.prepare('SELECT 1 FROM audit_log WHERE clinic_id = ? AND action = ? AND created_at >= ? LIMIT 1').get(clinicId, action, sinceIso)),
+  /** Saklama süresi dolan satırlarda kişiyi tanımlayan alanlar maskelenir; olay kaydı kalır */
+  maskOlderThan: (cutoffIso) => master.prepare(
+    `UPDATE audit_log SET actor_email = '[anonim]', ip = NULL WHERE created_at < ? AND actor_email IS NOT NULL AND actor_email NOT IN ('[anonim]', 'sistem')`).run(cutoffIso).changes,
 };

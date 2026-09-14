@@ -2,7 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { config } from './config.js';
-import { sessionMiddleware, csrfMiddleware, originCheck, requireRole, mustChangePasswordGate } from './auth.js';
+import { sessionMiddleware, csrfMiddleware, originCheck, requireRole, mustChangePasswordGate, legalAcceptanceGate } from './auth.js';
 import { limiters, clientIp } from './ratelimit.js';
 import { opsRouter } from './routes/ops.js';
 import { authRouter } from './routes/auth.js';
@@ -13,6 +13,8 @@ import { ownersRouter } from './routes/owners.js';
 import { remindersRouter } from './routes/reminders.js';
 import { quickRouter } from './routes/quick.js';
 import { importRouter } from './routes/import.js';
+import { publicRouter } from './routes/public.js';
+import { legalRouter } from './routes/legal.js';
 import { log } from './log.js';
 import { formatPhone, formatDate, formatDateTime, REMINDER_TYPES, STATUS_LABELS, SPECIES } from './util.js';
 
@@ -95,8 +97,11 @@ export function createApp() {
   app.use(mustChangePasswordGate);
 
   /* ---------- Rotalar ---------- */
+  app.use(publicRouter);          // oturumsuz: hukuki metinler, iletişim, klinik aydınlatma, SMS ret bağlantısı
   app.use(authRouter);
   app.use('/admin', requireRole('superadmin'), adminRouter);
+  app.use(legalAcceptanceGate);   // klinik yöneticisi güncel sözleşmeyi kabul etmeden klinik ekranlarına giremez
+  app.use(legalRouter);
   app.use(clinicScope);
   app.use('/kullanicilar', requireRole('admin'), usersRouter);
   app.use(ownersRouter);

@@ -4,6 +4,8 @@
   const _flash = (typeof flash === 'object' && flash) ? flash : { ok: '', err: '' };
   const _csrf = (typeof csrf === 'string') ? csrf : '';
   const _title = (typeof title === 'string') ? title : '';
+  const _legalLocked = (typeof legalLocked === 'boolean') ? legalLocked : false;
+  const _openRequests = (typeof openRequests === 'number') ? openRequests : 0;
   const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const nav = (p, label, extra) => `<a href="${esc(p)}" class="${(_path === p || (extra && extra.some((x) => _path.startsWith(x)))) ? 'active' : ''}">${esc(label)}</a>`;
 %>
@@ -40,6 +42,7 @@
       <%- nav('/sahipler', 'Hasta Sahipleri', ['/sahipler', '/hayvanlar']) %>
       <%- nav('/hatirlatmalar', 'Hatırlatmalar', ['/hatirlatmalar']) %>
       <%- nav('/sms', 'SMS Geçmişi', ['/sms']) %>
+      <%- nav('/basvurular', 'KVKK başvuruları' + (_openRequests ? ' (' + _openRequests + ')' : ''), ['/basvurular']) %>
       <% if (_user.role === 'admin') { %>
         <%- nav('/iceaktar', 'İçe aktar', ['/iceaktar']) %>
         <%- nav('/ayarlar', 'Ayarlar', ['/ayarlar']) %>
@@ -48,6 +51,7 @@
     <% } else if (_user && _user.role === 'superadmin') { %>
       <%- nav('/admin', 'Klinikler', ['/admin/klinik']) %>
       <%- nav('/admin/denetim', 'Denetim') %>
+      <%- nav('/admin/ihlaller', 'Veri ihlalleri') %>
     <% } %>
     <% if (_user) { %>
       <%- nav('/sifre', _user.name) %>
@@ -56,5 +60,8 @@
   </nav>
 </header>
 <main>
+<% if (_legalLocked && _user && _user.clinicId && _path !== '/ayarlar') { %>
+  <div class="flash err">SMS gönderimi kilitli: hukuki kimlik bilgileri eksik.<% if (_user.role === 'admin') { %> <a href="/ayarlar#hukuki-kimlik">Ayarlar › Hukuki kimlik</a> bölümünü tamamlayın.<% } else { %> Klinik yöneticisi Ayarlar'dan tamamlamalı.<% } %></div>
+<% } %>
 <% if (_flash.ok) { %><div class="flash ok"><%= _flash.ok %></div><% } %>
 <% if (_flash.err) { %><div class="flash err"><%= _flash.err %></div><% } %>

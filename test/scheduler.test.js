@@ -1,6 +1,6 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { setupEnv } from './helpers.js';
+import { setupEnv, LEGAL_SETTINGS } from './helpers.js';
 
 setupEnv();
 const { clinics, auditLog } = await import('../src/db/master.js');
@@ -22,6 +22,8 @@ function newClinic(settings = {}) {
   clinics.create(id, 'Test Klinik ' + id, '0212', nowIso());
   const db = openTenant(id);
   setSetting(db, 'clinic_name', 'Test Klinik');
+  setSetting(db, 'clinic_phone', '0212 555');
+  for (const [k, v] of Object.entries(LEGAL_SETTINGS)) setSetting(db, k, v);
   setSetting(db, 'clinic_phone', '0212 555');
   for (const [k, v] of Object.entries(settings)) setSetting(db, k, v);
   return { id, db };

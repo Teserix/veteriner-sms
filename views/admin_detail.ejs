@@ -21,8 +21,21 @@
       <div><label for="sms_daily_cap">Günlük SMS tavanı</label><input id="sms_daily_cap" type="number" name="sms_daily_cap" inputmode="numeric" min="0" max="5000" value="<%= clinic.sms_daily_cap %>"><div class="help">Klinik kendi ayarında bunun üstüne çıkamaz.</div></div>
     </div>
     <p class="small muted mono">Kimlik: <%= clinic.id %> · Dosya: tenants/<%= clinic.id %>.db · Oluşturma: <%= formatDateTime(clinic.created_at) %></p>
+    <p class="small muted">Hasta sahibi aydınlatma metni: <a href="/aydinlatma/<%= clinic.public_slug %>" target="_blank" rel="noopener">/aydinlatma/<%= clinic.public_slug %></a></p>
     <div class="form-actions"><button class="btn" type="submit">Kaydet</button></div>
   </form>
+</div>
+
+<h2>Sözleşme kabulleri</h2>
+<div class="card">
+  <% if (!acceptances.length) { %><div class="empty">Klinik yöneticisi henüz sözleşmeyi kabul etmedi; ilk girişte istenecek.</div><% } else { %>
+  <table class="cards small">
+    <thead><tr><th>Belge</th><th>Sürüm</th><th>Kabul</th><th>Kullanıcı</th><th>IP</th><th>Özet</th></tr></thead>
+    <tbody><% for (const a of acceptances) { %>
+      <tr><td data-label="Belge"><%= a.slug %></td><td data-label="Sürüm"><%= a.version %></td><td data-label="Kabul"><%= formatDateTime(a.accepted_at) %></td><td data-label="Kullanıcı">#<%= a.user_id %></td><td data-label="IP"><%= a.ip || '' %></td><td data-label="Özet" class="mono"><%= a.doc_sha256.slice(0, 12) %></td></tr>
+    <% } %></tbody>
+  </table>
+  <% } %>
 </div>
 
 <h2>Kullanıcılar</h2>

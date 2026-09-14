@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { owners, pets, reminders } from '../db/tenant.js';
 import { withTransaction } from '../db/migrate.js';
+import { logConsentChange } from './owners.js';
 import { normalizePhone, trim, toInt, nowIso, isValidDate, isValidEmail, addDays, todayLocal, REMINDER_TYPES, SPECIES } from '../util.js';
 
 /** Hızlı kayıt: sahip + hayvan + ilk hatırlatma tek formda */
@@ -44,7 +45,9 @@ quickRouter.post('/hizli-kayit', (req, res) => {
     let owner = owners.byPhone(req.db, phone);
     let ownerCreated = false;
     if (!owner) {
-      const id = owners.create(req.db, { name: ownerName, phone, email: email || null, notes: null, sms_opt_in: b.sms_opt_in === '1' ? 1 : 0, created_at: at });
+      const optIn = b.sms_opt_in === '1' ? 1 : 0;
+      const id = owners.create(req.db, { name: ownerName, phone, email: email || null, notes: null, sms_opt_in: optIn, created_at: at });
+      logConsentChange(req, req.db, id, { before: null, after: optIn, channel: 'panel' });
       owner = { id };
       ownerCreated = true;
     }

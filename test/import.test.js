@@ -15,7 +15,7 @@ process.env.ENABLE_SCHEDULER = '0';
 const { createApp } = await import('../src/app.js');
 const { initAuth, hashPassword } = await import('../src/auth.js');
 const { users } = await import('../src/db/master.js');
-const { openTenant, owners, pets } = await import('../src/db/tenant.js');
+const { openTenant, owners, pets, consents } = await import('../src/db/tenant.js');
 const { limiters } = await import('../src/ratelimit.js');
 const { _batches } = await import('../src/routes/import.js');
 const { auditLog } = await import('../src/db/master.js');
@@ -81,6 +81,11 @@ before(async () => {
   r = await post('/giris', { _csrf: csrfOf(r.text), email: 'ayse@pati.test', password: 'Gecici123' });
   r = await get('/sifre');
   r = await post('/sifre', { _csrf: csrfOf(r.text), current: 'Gecici123', password: 'YeniSifre123', password2: 'YeniSifre123' });
+  assert.equal(r.status, 302);
+  // sözleşme kapısı
+  r = await get('/sozlesme');
+  const accepts = Object.fromEntries([...r.text.matchAll(/name="(accept_[a-z-]+)"/g)].map((m) => [m[1], '1']));
+  r = await post('/sozlesme', { _csrf: csrfOf(r.text), ...accepts });
   assert.equal(r.status, 302);
   r = await get('/iceaktar');
   assert.equal(r.status, 200);
@@ -171,7 +176,11 @@ test('yükle -> eşleştir -> önizle -> onayla', async () => {
   assert.ok(eText.includes('Sahip adı boş'));
   assert.equal(eText.trim().split('\r\n').length, 4);
 
+  // beyan seçilmeden onaylanamaz (Ticari İletişim Yön. m.6/1 şartı, m.13/1 ispat)
   r = await post(`/iceaktar/${token}/onayla`, { _csrf: csrf });
+  assert.equal(r.status, 302);
+  assert.ok(r.location.includes('err='), r.location);
+  r = await post(`/iceaktar/${token}/onayla`, { _csrf: csrf, consent_declaration: 'own' });
   assert.equal(r.status, 302);
   assert.ok(r.location.startsWith('/sahipler?ok='), r.location);
   const msg = flashOf(r.location);
@@ -185,6 +194,13 @@ test('yükle -> eşleştir -> önizle -> onayla', async () => {
   assert.ok(mehmet);
   assert.equal(mehmet.email, 'mehmet@example.com');
   assert.equal(mehmet.import_batch, token);
+  assert.equal(mehmet.sms_opt_in, 1);
+  assert.match(mehmet.opt_out_token, /^[a-f0-9]{32}$/, 'ret belirteci üretilir');
+  const ev = consents.history(db, mehmet.id);
+  assert.equal(ev.length, 1);
+  assert.equal(ev[0].action, 'grant');
+  assert.equal(ev[0].channel, 'ice_aktarma');
+  assert.equal(ev[0].actor_email, 'ayse@pati.test');
   const mp = pets.byOwner(db, mehmet.id).map((p) => [p.name, p.species, p.breed, p.sex, p.birth_date, p.import_batch]);
   assert.deepEqual(mp, [['Boncuk', 'Kedi', 'Tekir', 'Dişi', '2020-03-15', token], ['Zeytin', 'Köpek', 'Golden', 'Erkek', '2019-01-02', token]]);
   const ali = owners.byPhone(db, '905441112233');
@@ -199,7 +215,7 @@ test('yükle -> eşleştir -> önizle -> onayla', async () => {
   assert.equal(r2.status, 404);
   const a = auditLog.recent(5, clinicId).find((x) => x.action === 'import.apply');
   assert.ok(a);
-  assert.deepEqual(JSON.parse(a.meta), { owners: 2, pets: 3, skipped: 1, errors: 3, rows: 7 });
+  assert.deepEqual(JSON.parse(a.meta), { owners: 2, pets: 3, skipped: 1, errors: 3, rows: 7, consent: 'own' });
   // sayfada görünüyor
   const list = await get('/sahipler');
   assert.ok(list.text.includes('Mehmet Kaya') && list.text.includes('Ali; Veli'));
@@ -217,7 +233,7 @@ test('ikinci içe aktarma: mevcut telefona hayvan eklenir, aynı hayvan atlanır
   r = await get(`/iceaktar/${t}/onizle`);
   assert.ok(r.text.includes('Mevcut sahibe eklenecek: Mehmet Kaya'));
   assert.ok(r.text.includes('Bu hayvan zaten kayıtlı'));
-  r = await post(`/iceaktar/${t}/onayla`, { _csrf: csrf });
+  r = await post(`/iceaktar/${t}/onayla`, { _csrf: csrf, consent_declaration: 'own' });
   assert.ok(flashOf(r.location).includes('0 yeni sahip, 1 hayvan'), r.location);
   const db = openTenant(clinicId);
   assert.equal(owners.count(db), 2);

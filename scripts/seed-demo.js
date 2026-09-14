@@ -148,6 +148,13 @@ const result = withTransaction(db, () => {
 // Demo kliniğinde otomatik gönderim kapalı: demo kayıtları kredi harcamasın
 setSetting(db, 'scheduler_enabled', '0');
 if (!settings.clinic_phone) setSetting(db, 'clinic_phone', '0212 555 00 00');
+// Demo hukuki kimliği (gönderim kilidi açık olsun): gerçek klinikte Ayarlar > Hukuki kimlik'ten girilir
+if (!settings.legal_form) {
+  setSetting(db, 'legal_form', 'esnaf');
+  setSetting(db, 'tax_id', '1234567890');
+  setSetting(db, 'ruhsat_isim', settings.clinic_name || 'Demo Veteriner');
+  setSetting(db, 'm61_declared_at', new Date().toISOString());
+}
 
 if (withStaff && !users.byEmail('personel@demo.local')) {
   users.create({ clinicId, email: 'personel@demo.local', name: 'Demo Personel', passwordHash: await hashPassword('Demo12345'), role: 'staff', createdAt: nowIso(), mustChangePassword: 0 });

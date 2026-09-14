@@ -65,6 +65,20 @@ r = await get('/sifre'); csrf = csrfOf(r.text);
 check('GET /sifre 200', r.status === 200, r.status);
 r = await post('/sifre', { _csrf: csrf, current: 'Gecici123', password: 'YeniSifre123', password2: 'YeniSifre123' });
 check('password change -> /', r.status === 302 && r.location.startsWith('/?ok='), `${r.status} ${r.location}`);
+// Sözleşme kapısı: kabul edilmeden panel açılmaz
+r = await get('/');
+check('legal gate redirects to /sozlesme', r.status === 302 && r.location === '/sozlesme', `${r.status} ${r.location}`);
+r = await get('/sozlesme'); csrf = csrfOf(r.text);
+check('GET /sozlesme 200 with two separate checkboxes', r.status === 200 && r.text.includes('accept_abonelik-sozlesmesi') && r.text.includes('accept_veri-isleyen-eki'), r.status);
+r = await post('/sozlesme', { _csrf: csrf, 'accept_abonelik-sozlesmesi': '1', 'accept_veri-isleyen-eki': '1' });
+check('accept contracts -> /', r.status === 302 && r.location.startsWith('/?ok='), `${r.status} ${r.location}`);
+r = await get('/');
+check('dashboard warns: sending locked until legal identity filled', r.status === 200 && r.text.includes('SMS gönderimi kilitli'), r.status);
+r = await get('/ayarlar'); csrf = csrfOf(r.text);
+r = await post('/ayarlar', { _csrf: csrf, clinic_name: 'Pati Veteriner', clinic_phone: '0212 555 11 22', template: 'Sayın {sahip}, {hayvan} için {tarih} {tur}. {klinik}', scheduler_enabled: '1', send_hour_start: '9', send_hour_end: '20', daily_sms_limit: '200', sms_provider: 'console', sms_sender: '', legal_form: 'tacir', mersis_no: '0123456789012345', m61_declare: '1', retention_sms_days: '1095' });
+check('legal identity saved', r.status === 302 && r.location.includes('ok='), r.location);
+r = await get('/');
+check('lock banner gone', r.status === 200 && !r.text.includes('SMS gönderimi kilitli'), r.status);
 r = await get('/'); csrf = csrfOf(r.text);
 check('dashboard 200', r.status === 200 && r.text.includes('Özet'), r.status);
 check('dashboard shows clinic name', r.text.includes('Pati Veteriner'));
@@ -84,6 +98,7 @@ r = await post('/hatirlatmalar/1/gonder', { _csrf: csrf }, { referer: BASE + '/s
 check('manual send -> redirect back with ok', r.status === 302 && r.location.startsWith('/sahipler/1?ok=') && !r.location.includes('ok=x'), `${r.status} ${r.location}`);
 r = await get('/sms');
 check('/sms shows sent row', r.status === 200 && r.text.includes('Gönderildi') && r.text.includes('Mehmet Kaya'), r.status);
+check('sent message carries Bilgilendirme prefix, MERSIS and /ret/ link', r.text.includes('Bilgilendirme:') && r.text.includes('MERSIS:0123456789012345') && r.text.includes('/ret/'), '');
 // resend blocked
 r = await post('/hatirlatmalar/1/gonder', { _csrf: csrf });
 check('second send blocked', r.location.includes('err='), r.location);
@@ -93,11 +108,13 @@ check('evil referer ignored', r.status === 302 && r.location.startsWith('/sahipl
 // 9) settings page + save + test sms
 r = await get('/ayarlar'); csrf = csrfOf(r.text);
 check('settings 200', r.status === 200 && r.text.includes('İleti Merkezi'), r.status);
-r = await post('/ayarlar', { _csrf: csrf, clinic_name: 'Pati Veteriner', clinic_phone: '0212', template: 'Sayın {sahip}, {hayvan} için {tarih} {tur}. {klinik}', scheduler_enabled: '1', send_hour_start: '9', send_hour_end: '20', daily_sms_limit: '2', sms_provider: 'netgsm', sms_sender: 'PATI VET', cred_netgsm_usercode: 'u', cred_netgsm_password: 'p' });
+r = await post('/ayarlar', { _csrf: csrf, clinic_name: 'Pati Veteriner', clinic_phone: '0212', template: 'Sayın {sahip}, {hayvan} için {tarih} {tur}. {klinik}', scheduler_enabled: '1', send_hour_start: '9', send_hour_end: '20', daily_sms_limit: '2', sms_provider: 'netgsm', sms_sender: 'PATI VET', cred_netgsm_usercode: 'u', cred_netgsm_password: 'p', legal_form: 'tacir', mersis_no: '0123456789012345' });
 check('settings save', r.status === 302 && r.location.includes('ok='), r.location);
 r = await get('/ayarlar');
 check('credentials marked saved', r.text.includes('kayıtlı'));
-r = await post('/ayarlar', { _csrf: csrf, clinic_name: 'Pati', clinic_phone: '', template: 'x', scheduler_enabled: '1', send_hour_start: '9', send_hour_end: '20', daily_sms_limit: '2', sms_provider: 'console', sms_sender: '' });
+r = await post('/ayarlar', { _csrf: csrf, clinic_name: 'Pati', clinic_phone: '0212', template: 'Sayın {sahip}, bu ay %20 indirim', scheduler_enabled: '1', send_hour_start: '9', send_hour_end: '20', daily_sms_limit: '2', sms_provider: 'console', sms_sender: '', legal_form: 'tacir', mersis_no: '0123456789012345' });
+check('promotional template rejected', r.location.includes('err=') && decodeURIComponent(r.location).includes('indirim'), r.location);
+r = await post('/ayarlar', { _csrf: csrf, clinic_name: 'Pati', clinic_phone: '0212', template: 'x', scheduler_enabled: '1', send_hour_start: '9', send_hour_end: '20', daily_sms_limit: '2', sms_provider: 'console', sms_sender: '', legal_form: 'tacir', mersis_no: '0123456789012345' });
 r = await post('/ayarlar/test', { _csrf: csrf, phone: '05001112233' });
 check('test sms ok (console)', r.location.includes('ok='), r.location);
 r = await post('/ayarlar/test', { _csrf: csrf, phone: '05001112233' });
