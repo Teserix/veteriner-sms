@@ -24,7 +24,8 @@ services:
     environment:
       - NODE_ENV=production
       - TRUST_PROXY=1
-      - ENABLE_SCHEDULER=1
+      # Tek kopya kuralı: ikinci bir ortamda 0 verin, aksi halde çift SMS gider.
+      - ENABLE_SCHEDULER=${ENABLE_SCHEDULER:-0}
       - DATA_DIR=/app/data
       - PORT=3000
       - BACKUP_HOUR=3
@@ -44,7 +45,9 @@ services:
         max-file: "3"
 
 volumes:
+  # Ad sabitlenir: proje adı değişse bile aynı volume kullanılır (boş volume = sessiz veri kaybı).
   veteriner_sms_data:
+    name: veteriner_sms_data
 
 networks:
   teserix_network:

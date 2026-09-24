@@ -15,6 +15,8 @@ COPY src ./src
 COPY views ./views
 COPY public ./public
 COPY scripts ./scripts
+# Hukuki metinler çalışma zamanında okunur (src/legal.js); imajda bulunmazsa uygulama açılmaz.
+COPY docs/legal ./docs/legal
 # /api/version bu dosyadan derleme zamanını okur (src/routes/ops.js -> ../../BUILD_TIME)
 ARG BUILD_TIME=
 RUN echo "${BUILD_TIME:-$(date -u +%FT%TZ)}" > /app/BUILD_TIME && mkdir -p /app/data && chown -R node:node /app
