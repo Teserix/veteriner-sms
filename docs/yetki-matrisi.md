@@ -13,7 +13,7 @@ Kişisel Veri Güvenliği Rehberi §3.1 ("erişim yetki ve kontrol matrisi oluş
 | İlgili kişi başvuruları | oku, kaydet, kapat | oku, kaydet, kapat | — |
 | Ayarlar (şablon, hukuki kimlik, saklama süresi, sağlayıcı bilgileri) | oku, yaz | — | — |
 | CSV içe aktarma | evet (onay beyanı zorunlu) | — | — |
-| Kullanıcılar | oluştur, rol değiştir, pasifleştir, sil, parola sıfırla | — | klinik yöneticisi parolasını sıfırlama (denetim kaydıyla) |
+| Kullanıcılar | oluştur, rol değiştir, pasifleştir, sil, parola sıfırla | — | klinik kullanıcılarını yönetir: ekleme, ad/e-posta/rol/durum düzenleme, parola belirleme/sıfırlama, silme (hepsi denetim kaydıyla; kliniğin en az bir aktif yöneticisi kalır) |
 | Sözleşme kabulü | kabul eder (zorunlu kapı) | — | kabul kayıtlarını görür |
 | Klinik açma / kapama / silme | — | — | evet |
 | Denetim günlüğü | — | — | oku |

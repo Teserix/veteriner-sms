@@ -29,7 +29,7 @@ data/                         (DATA_DIR)
 ```
 
 Klinik verileri birbirinden dosya düzeyinde ayrıdır: bir kullanıcı yalnızca kendi kliniğinin
-dosyasını açabilir (`clinicScope`). Süper yönetici rutin kullanımda klinik verisine giremez; yalnızca kurtarma amacıyla klinik kullanıcılarına geçici parola üretebilir ve bu işlem denetim günlüğüne IP ile yazılır.
+dosyasını açabilir (`clinicScope`). Süper yönetici rutin kullanımda klinik verisine giremez; klinik kullanıcı hesaplarını yönetir (ekleme, ad/e-posta/rol/durum düzenleme, parola belirleme/sıfırlama, silme) ve her işlem denetim günlüğüne IP ile yazılır. Belirlenen parola varsayılan olarak ilk girişte değiştirilmek zorundadır.
 
 ## Gereksinimler
 
@@ -87,7 +87,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"
 
 | Rol | Kapsam | Yetki |
 |---|---|---|
-| `superadmin` | Klinik bağımsız | `/admin`: klinik oluşturma/durdurma/silme, SMS tavanı, yönetici parolası sıfırlama, `/admin/denetim` |
+| `superadmin` | Klinik bağımsız | `/admin`: klinik oluşturma/durdurma/silme, SMS tavanı, klinik kullanıcılarını yönetme (ekle/düzenle/parola/sil; kliniğin en az bir aktif yöneticisi kalır), demo verisi, `/admin/denetim` |
 | `admin` | Bir klinik | Her şey + `/ayarlar` (SMS sağlayıcısı, şablon, saatler) + `/kullanicilar` + `/iceaktar` |
 | `staff` | Bir klinik | Sahip/hayvan/hatırlatma kayıtları, elle gönderim, SMS geçmişi |
 
@@ -381,7 +381,8 @@ Gerekli depo ayarları (Settings → Secrets and variables → Actions):
 
 - **Kiracı yalıtımı:** her klinik ayrı dosya; istek başına yalnızca kullanıcının kendi kliniği
   açılır (`clinicScope`). Süper yönetici klinik hasta verisi göremez, yalnızca `master.db`
-  yönetir; kurtarma amaçlı parola sıfırlama yetkisi vardır ve denetim günlüğüne düşer.
+  yönetir; klinik kullanıcı hesaplarını (ad, e-posta, rol, durum, parola) düzenleyebilir ve her
+  işlem denetim günlüğüne düşer. Tek istisna boş kliniğe sahte demo verisi yüklemedir.
   Veri dosyaları `umask 077` ile oluşturulur.
 - **Şifreli sağlayıcı bilgileri:** Netgsm/İleti Merkezi/Twilio hesap bilgileri `APP_SECRET`'tan
   türetilen anahtarla AES-256-GCM. **`APP_SECRET` değişirse** kayıtlı bilgiler çözülemez
@@ -396,7 +397,8 @@ Gerekli depo ayarları (Settings → Secrets and variables → Actions):
   gönderim 30/saat/klinik, CSV yükleme 5/saat, tüm POST'lar 300/15 dk/IP.
 - **Günlük SMS tavanı:** klinik başına iki kademeli (yukarıda).
 - **Parola:** bcrypt (12 tur), en az 8 karakter + harf + rakam; bilinmeyen e-postada da bcrypt
-  çalışır (zamanlama sızıntısı yok); geçici parolayla ilk girişte değişim zorunlu.
+  çalışır (zamanlama sızıntısı yok); geçici parolayla ilk girişte değişim zorunlu. Süper yöneticinin
+  belirlediği parola da varsayılan olarak ilk girişte değiştirilir (kutucuk kaldırılırsa kalıcı olur).
 - **Başlıklar:** CSP (`default-src 'self'`, satır içi script/style yok), `X-Frame-Options: DENY`,
   `nosniff`, `Referrer-Policy: same-origin`, `Cache-Control: no-store`, üretimde HSTS.
 - **Denetim kaydı:** `/admin/denetim` — giriş/çıkış, klinik ve kullanıcı işlemleri, ayar

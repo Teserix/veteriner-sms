@@ -1,0 +1,52 @@
+<%- include('partials/header') %>
+<div class="row between">
+  <h1><%= u.name %> <span class="small muted"><%= u.email %></span></h1>
+  <a class="btn secondary" href="/admin/klinik/<%= clinic.id %>">← <%= clinic.name %></a>
+</div>
+<% if (error) { %><div class="flash err"><%= error %></div><% } %>
+
+<div class="card">
+  <h2 class="mt0">Kullanıcı bilgileri</h2>
+  <form method="post" action="/admin/klinik/<%= clinic.id %>/kullanici/<%= u.id %>/duzenle">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <div class="form-grid">
+      <div><label for="name">Ad Soyad *</label><input id="name" type="text" name="name" required maxlength="80" autocapitalize="words" autocomplete="off" value="<%= form.name %>"></div>
+      <div><label for="email">E-posta *</label><input id="email" type="email" name="email" required maxlength="120" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" value="<%= form.email %>"></div>
+      <div><label for="role">Rol</label>
+        <select id="role" name="role">
+          <option value="staff" <%= form.role !== 'admin' ? 'selected' : '' %>>Personel</option>
+          <option value="admin" <%= form.role === 'admin' ? 'selected' : '' %>>Yönetici</option>
+        </select></div>
+      <div><label for="active">Durum</label>
+        <select id="active" name="active">
+          <option value="1" <%= form.active === '1' ? 'selected' : '' %>>Aktif</option>
+          <option value="0" <%= form.active !== '1' ? 'selected' : '' %>>Pasif (giriş yapamaz)</option>
+        </select></div>
+    </div>
+    <p class="small muted">Oluşturma: <%= formatDateTime(u.created_at) %> · Son giriş: <%= formatDateTime(u.last_login_at) || '—' %><% if (u.must_change_password) { %> · parola değişimi bekliyor<% } %></p>
+    <p class="small muted">E-posta, rol ya da durum değişince kullanıcının açık oturumları kapanır. Kliniğin giriş yapabilen en az bir yöneticisi kalmalıdır.</p>
+    <div class="form-actions"><button class="btn" type="submit">Kaydet</button></div>
+  </form>
+</div>
+
+<h2>Parola</h2>
+<div class="card">
+  <form method="post" action="/admin/klinik/<%= clinic.id %>/kullanici/<%= u.id %>/parola" data-confirm="Parola değiştirilecek ve kullanıcının açık oturumları kapanacak. Devam?">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <div class="form-grid">
+      <div><label for="password">Yeni parola *</label><input id="password" type="password" name="password" required autocomplete="new-password"><div class="help">En az 8 karakter, harf ve rakam. Kullanıcıya güvenli bir kanaldan iletin.</div></div>
+    </div>
+    <label class="checkbox mt10"><input type="checkbox" name="must_change" value="1" checked> İlk girişte parolasını değiştirmesi istensin</label>
+    <div class="form-actions"><button class="btn secondary" type="submit">Parolayı kaydet</button></div>
+  </form>
+  <p class="small muted mt10">Rastgele geçici parola üretmek için klinik sayfasındaki "Parola sıfırla" düğmesini kullanın.</p>
+</div>
+
+<h2>Tehlikeli işlemler</h2>
+<div class="card">
+  <form method="post" action="/admin/klinik/<%= clinic.id %>/kullanici/<%= u.id %>/sil" data-confirm="<%= u.email %> silinecek. Emin misiniz?">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <button class="btn danger" type="submit">Kullanıcıyı sil</button>
+  </form>
+</div>
+<%- include('partials/footer') %>

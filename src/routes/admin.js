@@ -12,7 +12,8 @@ import { log } from '../log.js';
 import { trim, toInt, nowIso, isValidEmail } from '../util.js';
 
 /**
- * Süper yönetici: klinik (kiracı) açma/kapatma, yönetici parolası sıfırlama.
+ * Süper yönetici: klinik (kiracı) açma/kapatma, klinik kullanıcılarını yönetme (ekleme, ad/e-posta/rol/durum,
+ * parola belirleme/sıfırlama, silme; hepsi denetim kaydıyla).
  * Klinik HASTA verisine erişmez; yalnızca klinik ayarlarını (ad/telefon) senkronlar ve dosyayı taşır.
  * Tek istisna: boş kliniğe sahte demo verisi yükleme (/klinik/:id/demo, src/demo.js).
  * /admin altında; superadmin rolü app.js'te zorunlu.
@@ -24,9 +25,9 @@ function listView(res, { error = null, form = {}, status = 200 } = {}) {
   res.status(status).render('admin', { title: 'Klinikler', list, error, form });
 }
 
-function detailView(res, clinic, { tempPassword = null, tempFor = null, error = null, status = 200 } = {}) {
+function detailView(res, clinic, { tempPassword = null, tempFor = null, error = null, status = 200, userForm = {} } = {}) {
   res.status(status).render('admin_detail', {
-    title: clinic.name, clinic, userList: users.byClinic(clinic.id), tempPassword, tempFor, error,
+    title: clinic.name, clinic, userList: users.byClinic(clinic.id), tempPassword, tempFor, error, userForm,
     acceptances: legalAcceptances.byClinic(clinic.id),
   });
 }
@@ -197,6 +198,121 @@ adminRouter.post('/klinik/:id/demo', (req, res) => {
     ? 'Demo verisi zaten yüklü; hiçbir şey değişmedi.'
     : `Demo verisi yüklendi: ${added.owners} sahip, ${added.pets} hayvan, ${added.reminders} hatırlatma, ${added.sms} SMS kaydı. Demo numaralara gerçek SMS gitmez; gönderim için klinik Ayarlar › Hukuki kimlik bölümünü kendisi doldurmalı.`;
   res.redirect(`/admin/klinik/${c.id}?ok=` + encodeURIComponent(text));
+});
+
+/* ---------- Klinik kullanıcıları: süper yönetici tüm bilgileri düzenler (ad, e-posta, rol, durum, parola, silme) ---------- */
+
+/** Kliniğe ait kullanıcı; başka kliniğin kullanıcısı ve süper yöneticiler kapsam dışı */
+function clinicUser(c, uid) {
+  const u = users.byId(toInt(uid));
+  return u && u.clinic_id === c.id && u.role !== 'superadmin' ? u : null;
+}
+
+/** Kliniğin giriş yapabilen en az bir yöneticisi kalmalı; yoksa klinik kilitlenir ve yalnızca Teserix açabilir */
+function wouldOrphanClinic(c, u, { role = u.role, active = !!u.active } = {}) {
+  const wasActiveAdmin = u.role === 'admin' && !!u.active;
+  const staysActiveAdmin = role === 'admin' && active;
+  return wasActiveAdmin && !staysActiveAdmin && users.activeAdminCount(c.id) <= 1;
+}
+
+function userView(res, clinic, u, { error = null, form = null, status = 200 } = {}) {
+  res.status(status).render('admin_user', {
+    title: `${u.name} · ${clinic.name}`, clinic, u, error,
+    form: form || { name: u.name, email: u.email, role: u.role, active: u.active ? '1' : '0' },
+  });
+}
+
+function userNotFound(res, c) {
+  return res.redirect(`/admin/klinik/${c.id}?err=` + encodeURIComponent('Kullanıcı bulunamadı.'));
+}
+
+adminRouter.get('/klinik/:id/kullanici/:uid', (req, res) => {
+  const c = loadClinic(req, res);
+  if (!c) return;
+  const u = clinicUser(c, req.params.uid);
+  if (!u) return userNotFound(res, c);
+  userView(res, c, u);
+});
+
+/** Kliniğe yeni kullanıcı (klinik yöneticisinin /kullanicilar akışıyla aynı kurallar) */
+adminRouter.post('/klinik/:id/kullanici', async (req, res) => {
+  const c = loadClinic(req, res);
+  if (!c) return;
+  const form = { name: trim(req.body.name, 80), email: trim(req.body.email, 120).toLowerCase(), role: req.body.role === 'admin' ? 'admin' : 'staff' };
+  const password = String(req.body.password || '');
+  const fail = (error) => detailView(res, c, { error, userForm: form, status: 400 });
+  if (!form.name || !form.email) return fail('Ad ve e-posta zorunlu.');
+  if (!isValidEmail(form.email)) return fail('E-posta adresi geçersiz.');
+  const problem = passwordProblem(password);
+  if (problem) return fail(problem);
+  if (users.byEmail(form.email)) return fail('Bu e-posta kullanılamıyor.');
+  const r = users.create({ clinicId: c.id, email: form.email, name: form.name, passwordHash: await hashPassword(password), role: form.role, createdAt: nowIso(), mustChangePassword: 1 });
+  audit(req, 'user.create', { clinicId: c.id, entityType: 'user', entityId: r.lastInsertRowid, meta: { role: form.role } });
+  // Flash metnine e-posta yazılmaz (URL erişim günlüklerine düşer); kullanıcı listede zaten görünür
+  res.redirect(`/admin/klinik/${c.id}?ok=` + encodeURIComponent('Kullanıcı eklendi; ilk girişte parola değişimi istenecek.'));
+});
+
+adminRouter.post('/klinik/:id/kullanici/:uid/duzenle', (req, res) => {
+  const c = loadClinic(req, res);
+  if (!c) return;
+  const u = clinicUser(c, req.params.uid);
+  if (!u) return userNotFound(res, c);
+  const form = {
+    name: trim(req.body.name, 80),
+    email: trim(req.body.email, 120).toLowerCase(),
+    role: req.body.role === 'admin' ? 'admin' : 'staff',
+    active: req.body.active === '1' ? '1' : '0',
+  };
+  const fail = (error) => userView(res, c, u, { error, form, status: 400 });
+  if (!form.name || !form.email) return fail('Ad ve e-posta zorunlu.');
+  if (!isValidEmail(form.email)) return fail('E-posta adresi geçersiz.');
+  const other = users.byEmail(form.email);
+  if (other && other.id !== u.id) return fail('Bu e-posta kullanılamıyor.');
+  const active = form.active === '1';
+  if (wouldOrphanClinic(c, u, { role: form.role, active })) {
+    return fail('Kliniğin giriş yapabilen en az bir yöneticisi kalmalı; önce başka bir yönetici ekleyin.');
+  }
+  const changed = {
+    name: form.name !== u.name,
+    email: form.email !== u.email,
+    role: form.role !== u.role ? form.role : null,
+    active: active !== !!u.active ? active : null,
+  };
+  users.update(u.id, { name: form.name, email: form.email, role: form.role, active });
+  // E-posta, rol ya da durum değişince açık oturumlar kapanır (eski yetkiyle devam edilmesin)
+  if (changed.email || changed.role !== null || changed.active !== null) sessions.deleteForUser(u.id);
+  audit(req, 'user.update', { clinicId: c.id, entityType: 'user', entityId: u.id, meta: changed });
+  res.redirect(`/admin/klinik/${c.id}/kullanici/${u.id}?ok=` + encodeURIComponent('Kaydedildi.'));
+});
+
+/** Süper yönetici belirli bir parola verir (geçici parola üretimi için /sifre-sifirla) */
+adminRouter.post('/klinik/:id/kullanici/:uid/parola', async (req, res) => {
+  const c = loadClinic(req, res);
+  if (!c) return;
+  const u = clinicUser(c, req.params.uid);
+  if (!u) return userNotFound(res, c);
+  const password = String(req.body.password || '');
+  const problem = passwordProblem(password);
+  if (problem) return userView(res, c, u, { error: problem, status: 400 });
+  const mustChange = req.body.must_change === '1';
+  users.setPassword(u.id, await hashPassword(password), mustChange ? 1 : 0);
+  sessions.deleteForUser(u.id);
+  audit(req, 'user.password_set', { clinicId: c.id, entityType: 'user', entityId: u.id, meta: { mustChange } });
+  res.redirect(`/admin/klinik/${c.id}/kullanici/${u.id}?ok=` + encodeURIComponent(mustChange ? 'Parola kaydedildi; kullanıcı ilk girişte değiştirecek.' : 'Parola kaydedildi.'));
+});
+
+adminRouter.post('/klinik/:id/kullanici/:uid/sil', (req, res) => {
+  const c = loadClinic(req, res);
+  if (!c) return;
+  const u = clinicUser(c, req.params.uid);
+  if (!u) return userNotFound(res, c);
+  if (wouldOrphanClinic(c, u, { active: false })) {
+    return userView(res, c, u, { error: 'Kliniğin giriş yapabilen en az bir yöneticisi kalmalı; silmeden önce başka bir yönetici ekleyin.', status: 400 });
+  }
+  sessions.deleteForUser(u.id);
+  users.delete(u.id);
+  audit(req, 'user.delete', { clinicId: c.id, entityType: 'user', entityId: u.id });
+  res.redirect(`/admin/klinik/${c.id}?ok=` + encodeURIComponent('Kullanıcı silindi.'));
 });
 
 /** Klinik silme: oturumları kapat, dosyayı data/trash/ altına taşı (unlink yok); klinik kaydı ve kullanıcı hesapları master.db'den silinir */

@@ -153,6 +153,11 @@ export const users = {
     master.prepare('UPDATE users SET password_hash = ?, must_change_password = ? WHERE id = ?').run(hash, mustChange ? 1 : 0, id),
   setActive: (id, active) => master.prepare('UPDATE users SET active = ? WHERE id = ?').run(active ? 1 : 0, id),
   setRole: (id, role) => master.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id),
+  /** Süper yönetici düzenlemesi: ad, e-posta, rol ve durum tek seferde (src/routes/admin.js) */
+  update: (id, { name, email, role, active }) =>
+    master.prepare('UPDATE users SET name = ?, email = ?, role = ?, active = ? WHERE id = ?').run(name, email, role, active ? 1 : 0, id),
+  /** Kliniğin giriş yapabilen yönetici sayısı; sıfıra düşerse kliniği yalnızca süper yönetici kurtarabilir */
+  activeAdminCount: (clinicId) => master.prepare("SELECT COUNT(*) AS c FROM users WHERE clinic_id = ? AND role = 'admin' AND active = 1").get(clinicId).c,
   touchLogin: (id, at) => master.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(at, id),
   delete: (id) => master.prepare('DELETE FROM users WHERE id = ?').run(id),
 };

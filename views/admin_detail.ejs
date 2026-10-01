@@ -51,12 +51,32 @@
       <td data-label="Durum"><% if (u.active) { %><span class="badge ok">Aktif</span><% } else { %><span class="badge cancelled">Pasif</span><% } %></td>
       <td class="small" data-label="Son giriş"><%= formatDateTime(u.last_login_at) || '—' %></td>
       <td class="actions">
+        <a class="btn sm secondary" href="/admin/klinik/<%= clinic.id %>/kullanici/<%= u.id %>">Düzenle</a>
         <form method="post" action="/admin/klinik/<%= clinic.id %>/sifre-sifirla" data-confirm="Geçici parola üretilsin mi?"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="user_id" value="<%= u.id %>"><button class="btn sm secondary" type="submit">Parola sıfırla</button></form>
       </td>
     </tr>
     <% } %>
     </tbody>
   </table>
+  <% if (!userList.length) { %><div class="empty">Bu klinikte kullanıcı yok; aşağıdan bir yönetici ekleyin.</div><% } %>
+</div>
+
+<h2>Yeni kullanıcı</h2>
+<div class="card">
+  <form method="post" action="/admin/klinik/<%= clinic.id %>/kullanici">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <div class="form-grid">
+      <div><label for="u_name">Ad Soyad *</label><input id="u_name" type="text" name="name" required maxlength="80" autocapitalize="words" autocomplete="off" value="<%= userForm.name || '' %>"></div>
+      <div><label for="u_email">E-posta *</label><input id="u_email" type="email" name="email" required maxlength="120" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" value="<%= userForm.email || '' %>"></div>
+      <div><label for="u_password">Geçici parola *</label><input id="u_password" type="password" name="password" required autocomplete="new-password"><div class="help">En az 8 karakter, harf ve rakam. Kullanıcı ilk girişte değiştirir.</div></div>
+      <div><label for="u_role">Rol</label>
+        <select id="u_role" name="role">
+          <option value="staff" <%= userForm.role !== 'admin' ? 'selected' : '' %>>Personel</option>
+          <option value="admin" <%= userForm.role === 'admin' ? 'selected' : '' %>>Yönetici</option>
+        </select></div>
+    </div>
+    <div class="form-actions"><button class="btn" type="submit">Kullanıcı ekle</button></div>
+  </form>
 </div>
 
 <h2>Demo verisi</h2>
