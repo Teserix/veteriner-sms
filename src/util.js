@@ -190,3 +190,13 @@ export const STATUS_LABELS = {
   cancelled: 'İptal',
   failed: 'Gönderilemedi',
 };
+
+/**
+ * Demo telefon aralığı: 0515/0516 BTK numara planında atanmamıştır; demo verisi (src/demo.js) yalnızca
+ * bu aralıktan numara üretir ve SMS çıkış noktası (src/sms/index.js sendSms) bu numaraları hiçbir
+ * sağlayıcıya göndermez. Böylece demo kayıtları ne gerçek kişiye ulaşır ne de kredi harcar.
+ */
+export const DEMO_PHONE_RE = /^9051[56]\d{7}$/;
+export function isDemoPhone(phone) {
+  return DEMO_PHONE_RE.test(String(phone || ''));
+}

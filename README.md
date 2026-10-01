@@ -428,9 +428,12 @@ npm run dev          # --watch ile
 npm test             # node --test "test/*.test.js"
 npm run create-admin -- <e-posta> <parola> [ad]
 npm run backup       # elle yedek
-# Demo verisi: bir kliniğe 20 sahip / 24 hayvan / 33 hatırlatma / SMS geçmişi ekler (mevcut kayıtları korur),
-# telefonlar atanmamış 0515/0516 aralığındandır ve o klinikte otomatik gönderimi kapatır.
-# --personel ile personel@demo.local / Demo12345 hesabı da açar.
+# Demo verisi: bir kliniğe 20 sahip / 24 hayvan / 33 hatırlatma / SMS geçmişi ekler (mevcut kayıtları korur,
+# tekrar çalıştırmak çift kayıt üretmez). Telefonlar atanmamış 0515/0516 aralığındandır; SMS çıkış noktası
+# (src/sms/index.js) bu numaraları sağlayıcıya hiç göndermez, 'demo' sağlayıcısıyla başarılı sayar.
+# Hukuki kimlik ve zamanlayıcı ayarına dokunmaz. Aynı iş süper yönetici panelinden de yapılır:
+# Klinikler › klinik › "Demo verisi yükle" (gerçek sahip kaydı olmayan klinikte).
+# --personel: personel@demo.local / Demo12345 hesabı açar. --sahte-kimlik: YALNIZCA yerel geliştirme, sahte VKN yazar.
 node scripts/seed-demo.js <klinik-id> --personel
 
 # Uçtan uca HTTP duman testi: BOŞ bir veri klasörüyle açılmış sunucuya karşı çalışır.

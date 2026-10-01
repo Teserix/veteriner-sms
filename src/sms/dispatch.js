@@ -10,6 +10,7 @@ import { todayLocal, localDayStartIso, toInt, nowIso } from '../util.js';
 /**
  * Uygulamadaki TEK SMS çıkış noktası.
  * Sıra: hukuki kimlik/beyan kilidi (test hariç) -> opt-in kontrolü (test hariç) -> günlük tavan -> gönder -> sms_log.
+ * Demo numaralar (atanmamış 0515/0516, util.js isDemoPhone) sendSms içinde sağlayıcıya gitmeden 'demo' olarak başarılı sayılır.
  * Tavan aşımında gönderilmez ve sms_log'a yazılmaz; günde bir denetim satırı düşülür.
  * dispatch() klinik başına kilit altında çalışır (eşzamanlı istekler tavanı aşamaz).
  *

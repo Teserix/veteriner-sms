@@ -59,6 +59,16 @@
   </table>
 </div>
 
+<h2>Demo verisi</h2>
+<div class="card">
+  <p class="small muted">Tanıtım için 20 sahip, 24 hayvan, 33 hatırlatma ve SMS geçmişi ekler. Telefonlar atanmamış 0515/0516 aralığındadır; bu numaralar SMS sağlayıcısına hiç gönderilmez, gerçek kişiye ulaşmaz ve kredi harcamaz. Hukuki kimlik ve zamanlayıcı ayarına dokunulmaz; gönderim için klinik kendi hukuki kimliğini girer. Yalnızca gerçek sahip kaydı olmayan kliniğe yüklenir. Tekrar tıklamak çift kayıt oluşturmaz.</p>
+  <form method="post" action="/admin/klinik/<%= clinic.id %>/demo" class="row mt10" data-confirm="Bu kliniğe demo verisi yüklenecek. Devam?">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <input type="text" name="confirm_name" placeholder="Onay için klinik adını yazın" class="maxw260" autocomplete="off">
+    <button class="btn secondary" type="submit">Demo verisi yükle</button>
+  </form>
+</div>
+
 <h2>Tehlikeli işlemler</h2>
 <div class="card">
   <div class="row between">

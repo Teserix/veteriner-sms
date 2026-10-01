@@ -1,4 +1,5 @@
 import { decrypt } from '../crypto.js';
+import { isDemoPhone } from '../util.js';
 
 /**
  * SMS sağlayıcı katmanı.
@@ -203,6 +204,8 @@ export async function sendSms(settings, to, message) {
   const { name, provider, credentials, credentialsBroken, sender } = resolveProvider(settings);
   const msg = String(message || '').trim().slice(0, MAX_MESSAGE_LENGTH);
   if (!msg) return { ok: false, error: 'Mesaj boş', providerName: name };
+  // Atanmamış 0515/0516 aralığı (demo verisi): hiçbir sağlayıcıya gitmez, başarılı sayılır, sms_log'da provider='demo'.
+  if (isDemoPhone(to)) return { ok: true, ref: 'demo-' + Date.now().toString(36), providerName: 'demo' };
   if (credentialsBroken && name !== 'console') {
     return { ok: false, error: 'Kayıtlı sağlayıcı bilgileri çözülemedi (APP_SECRET değişmiş olabilir); Ayarlar sayfasından yeniden girin.', providerName: name };
   }

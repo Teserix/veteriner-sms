@@ -7,12 +7,14 @@ import { openTenant, closeTenant, setSetting, tenantPath } from '../db/tenant.js
 import { config } from '../config.js';
 import { randomId } from '../crypto.js';
 import { audit } from '../audit.js';
+import { seedDemo, nonDemoOwnerCount } from '../demo.js';
 import { log } from '../log.js';
 import { trim, toInt, nowIso, isValidEmail } from '../util.js';
 
 /**
  * Süper yönetici: klinik (kiracı) açma/kapatma, yönetici parolası sıfırlama.
  * Klinik HASTA verisine erişmez; yalnızca klinik ayarlarını (ad/telefon) senkronlar ve dosyayı taşır.
+ * Tek istisna: boş kliniğe sahte demo verisi yükleme (/klinik/:id/demo, src/demo.js).
  * /admin altında; superadmin rolü app.js'te zorunlu.
  */
 export const adminRouter = Router();
@@ -169,6 +171,32 @@ adminRouter.post('/klinik/:id/sifre-sifirla', async (req, res) => {
   sessions.deleteForUser(u.id);
   audit(req, 'user.password_reset', { clinicId: c.id, entityType: 'user', entityId: u.id });
   detailView(res, c, { tempPassword: temp, tempFor: u });
+});
+
+/**
+ * Demo verisi (src/demo.js): tanıtım için sahte sahip/hayvan/hatırlatma kayıtları ve SMS geçmişi.
+ * Süper yöneticinin klinik verisine yazdığı tek yerdir; bu yüzden yalnızca gerçek sahip kaydı OLMAYAN
+ * kliniklerde çalışır ve klinik adıyla onay ister. Hukuki kimlik ve zamanlayıcı ayarına dokunmaz;
+ * demo numaralar (0515/0516) SMS çıkışında sağlayıcıya hiç gitmez (sms/index.js).
+ */
+adminRouter.post('/klinik/:id/demo', (req, res) => {
+  const c = loadClinic(req, res);
+  if (!c) return;
+  if (trim(req.body.confirm_name, 80) !== c.name) {
+    return detailView(res, c, { error: 'Demo verisi için klinik adını aynen yazın.', status: 400 });
+  }
+  if (!c.active) return detailView(res, c, { error: 'Pasif kliniğe demo verisi yüklenmez; önce aktifleştirin.', status: 400 });
+  const db = openTenant(c.id);
+  const real = nonDemoOwnerCount(db);
+  if (real > 0) {
+    return detailView(res, c, { error: `Bu klinikte ${real} gerçek sahip kaydı var; demo verisi yalnızca boş kliniğe yüklenir.`, status: 400 });
+  }
+  const added = seedDemo(db); // hukuki kimlik yazılmaz, zamanlayıcı ayarı değişmez
+  audit(req, 'clinic.demo_seed', { clinicId: c.id, entityType: 'clinic', entityId: c.id, meta: added });
+  const text = added.owners === 0
+    ? 'Demo verisi zaten yüklü; hiçbir şey değişmedi.'
+    : `Demo verisi yüklendi: ${added.owners} sahip, ${added.pets} hayvan, ${added.reminders} hatırlatma, ${added.sms} SMS kaydı. Demo numaralara gerçek SMS gitmez; gönderim için klinik Ayarlar › Hukuki kimlik bölümünü kendisi doldurmalı.`;
+  res.redirect(`/admin/klinik/${c.id}?ok=` + encodeURIComponent(text));
 });
 
 /** Klinik silme: oturumları kapat, dosyayı data/trash/ altına taşı (unlink yok); klinik kaydı ve kullanıcı hesapları master.db'den silinir */
