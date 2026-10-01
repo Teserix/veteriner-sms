@@ -13,7 +13,9 @@
 
 services:
   veteriner-sms:
-    container_name: veteriner-sms
+    # container_name bilinçli olarak YOK: Dokploy compose dağıtımında sabit ad log/metrik
+    # toplamayı bozuyor. Tünel hedefi (http://veteriner-sms:3000) yine çalışır; Compose,
+    # servis adını teserix_network üzerinde DNS takma adı olarak zaten verir.
     build:
       context: .
       dockerfile: Dockerfile
