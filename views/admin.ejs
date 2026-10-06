@@ -1,7 +1,9 @@
 <%- include('partials/header') %>
-<h1>Klinikler</h1>
-<div class="card">
-  <% if (!list.length) { %><div class="empty">Henüz klinik yok. Aşağıdan ilk kliniği oluşturun.</div><% } else { %>
+<div class="page-head"><div><h1>Klinikler</h1><p class="sub"><%= list.length %> klinik · her kliniğin verisi ayrı bir veritabanı dosyasında</p></div>
+  <div class="page-actions"><a class="btn" href="#yeni-klinik"><%- icon('plus') %>Yeni klinik</a></div>
+</div>
+<div class="card flush">
+  <% if (!list.length) { %><div class="empty-state"><span class="es-icon"><%- icon('building') %></span><span class="es-title">Henüz klinik yok.</span><span class="es-text">Aşağıdan ilk kliniği oluşturun.</span></div><% } else { %>
   <table class="cards">
     <thead><tr><th>Klinik</th><th>Telefon</th><th>Kullanıcı</th><th>Günlük tavan</th><th>Durum</th><th><span class="visually-hidden">İşlemler</span></th></tr></thead>
     <tbody>
@@ -23,23 +25,23 @@
   <% } %>
 </div>
 
-<h2>Yeni klinik oluştur</h2>
-<div class="card">
-  <% if (error) { %><div class="flash err"><%= error %></div><% } %>
+<div class="card form-card" id="yeni-klinik">
+  <h2 class="card-title">Yeni klinik oluştur</h2>
+  <% if (error) { %><div class="flash err" role="alert"><%- icon('alert') %><span><%= error %></span></div><% } %>
   <form method="post" action="/admin/klinik">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
     <div class="form-grid">
-      <div><label for="clinic_name">Klinik adı *</label><input id="clinic_name" type="text" name="clinic_name" required maxlength="80" value="<%= form.clinic_name || '' %>"></div>
+      <div><label for="clinic_name">Klinik adı <span class="req" aria-hidden="true">*</span></label><input id="clinic_name" type="text" name="clinic_name" required maxlength="80" value="<%= form.clinic_name || '' %>"></div>
       <div><label for="clinic_phone">Klinik telefonu</label><input id="clinic_phone" type="tel" name="clinic_phone" maxlength="30" inputmode="tel" autocomplete="off" value="<%= form.clinic_phone || '' %>"></div>
-      <div><label for="admin_name">Yönetici adı *</label><input id="admin_name" type="text" name="admin_name" required maxlength="80" value="<%= form.admin_name || '' %>"></div>
-      <div><label for="admin_email">Yönetici e-postası *</label><input id="admin_email" type="email" name="admin_email" required maxlength="120" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" value="<%= form.admin_email || '' %>"></div>
-      <div><label for="admin_password">Geçici yönetici parolası *</label><input id="admin_password" type="password" name="admin_password" required autocomplete="new-password"><div class="help">En az 8 karakter, harf ve rakam. Yönetici ilk girişte değiştirir.</div></div>
+      <div><label for="admin_name">Yönetici adı <span class="req" aria-hidden="true">*</span></label><input id="admin_name" type="text" name="admin_name" required maxlength="80" value="<%= form.admin_name || '' %>"></div>
+      <div><label for="admin_email">Yönetici e-postası <span class="req" aria-hidden="true">*</span></label><input id="admin_email" type="email" name="admin_email" required maxlength="120" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" value="<%= form.admin_email || '' %>"></div>
+      <div><label for="admin_password">Geçici yönetici parolası <span class="req" aria-hidden="true">*</span></label><input id="admin_password" type="password" name="admin_password" required autocomplete="new-password"><div class="help">En az 8 karakter, harf ve rakam. Yönetici ilk girişte değiştirir.</div></div>
     </div>
     <div class="form-actions"><button class="btn" type="submit">Klinik oluştur</button></div>
   </form>
 </div>
 
-<div class="card small muted">
+<div class="alert info"><%- icon('info') %><div>
   Süper yönetici hiçbir kliniğin hasta verisini görmez; yalnızca klinik açar/kapatır ve kilitlenen yöneticiler için geçici parola üretir. Klinik yöneticisi kendi personelini "Kullanıcılar" sayfasından ekler.
-</div>
+</div></div>
 <%- include('partials/footer') %>

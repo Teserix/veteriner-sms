@@ -1,17 +1,17 @@
 <%- include('partials/header') %>
-<h1>Veri ihlali kayıtları</h1>
+<div class="page-head"><div><h1>Veri ihlali kayıtları</h1><p class="sub">KVKK m.12/5 · Kurul bildirimi en geç 72 saat</p></div></div>
 <div class="card">
   <div class="help">KVKK m.12/5 ve Kurul'un 24.01.2019 tarihli 2019/10 sayılı kararı: ihlal öğrenildiğinde veri sorumlusu (klinik) <strong>gecikmeksizin</strong>, Kurul <strong>en geç 72 saat</strong> içinde bilgilendirilir; etkilenen kişilere makul en kısa sürede bildirim yapılır; ihlal bilgileri, etkileri ve alınan tedbirler kayıt altına alınır. Bu ekran o kaydı tutar. Kurul bildirimi: <a href="https://ihlalbildirim.kvkk.gov.tr" target="_blank" rel="noopener">ihlalbildirim.kvkk.gov.tr</a>.</div>
   <form method="post" action="/admin/ihlaller" class="mt10">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
     <div class="form-grid">
       <div><label for="clinic_id">Etkilenen klinik</label><select id="clinic_id" name="clinic_id"><option value="">Tümü / belirsiz</option><% for (const c of clinicList) { %><option value="<%= c.id %>"><%= c.name %></option><% } %></select></div>
-      <div><label for="detected_at">Tespit zamanı *</label><input id="detected_at" type="datetime-local" name="detected_at" required></div>
+      <div><label for="detected_at">Tespit zamanı <span class="req" aria-hidden="true">*</span></label><input id="detected_at" type="datetime-local" name="detected_at" required></div>
       <div><label for="occurred_at">Gerçekleşme zamanı (biliniyorsa)</label><input id="occurred_at" type="datetime-local" name="occurred_at"></div>
       <div><label for="affected_count">Etkilenen kayıt sayısı</label><input id="affected_count" type="number" name="affected_count" inputmode="numeric" min="0"></div>
       <div><label for="categories">Etkilenen veri kategorileri</label><input id="categories" type="text" name="categories" maxlength="300" placeholder="kimlik, iletişim, ..."></div>
     </div>
-    <label for="source">İhlalin kaynağı ve niteliği *</label><textarea id="source" name="source" maxlength="500" rows="2" required></textarea>
+    <label for="source">İhlalin kaynağı ve niteliği <span class="req" aria-hidden="true">*</span></label><textarea id="source" name="source" maxlength="500" rows="2" required></textarea>
     <label for="consequences">Olası sonuçlar</label><textarea id="consequences" name="consequences" maxlength="1000" rows="2"></textarea>
     <label for="measures">Alınan / alınacak tedbirler</label><textarea id="measures" name="measures" maxlength="1000" rows="2"></textarea>
     <div class="form-actions"><button class="btn danger" type="submit">İhlal kaydı oluştur</button></div>

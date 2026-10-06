@@ -1,27 +1,45 @@
 <%- include('partials/header') %>
-<div class="row between">
-  <h1>Hasta Sahipleri</h1>
-  <a class="btn" href="/sahipler/yeni">+ Yeni hasta sahibi</a>
+<div class="page-head">
+  <div>
+    <h1>Hasta Sahipleri</h1>
+    <p class="sub"><%= q ? `"${q}" için ${list.length} sonuç` : `${list.length} kayıt` %></p>
+  </div>
+  <div class="page-actions">
+    <% if (user.role === 'admin') { %><a class="btn secondary" href="/iceaktar"><%- icon('upload') %>CSV içe aktar</a><% } %>
+    <a class="btn" href="/sahipler/yeni"><%- icon('plus') %>Yeni hasta sahibi</a>
+  </div>
 </div>
-<div class="card">
-  <form method="get" action="/sahipler" class="search">
+
+<form method="get" action="/sahipler" class="toolbar" role="search">
+  <div class="search-field">
+    <%- icon('search') %>
     <input type="search" name="q" inputmode="search" enterkeyhint="search" autocomplete="off" aria-label="Hasta sahibi ara" placeholder="Ad veya telefon ara…" value="<%= q %>">
+  </div>
+  <div class="row">
     <button class="btn secondary" type="submit">Ara</button>
-    <% if (q) { %><a class="btn secondary" href="/sahipler">Temizle</a><% } %>
-  </form>
-</div>
-<div class="card">
-  <% if (!list.length) { %><div class="empty">Kayıt bulunamadı.</div><% } else { %>
+    <% if (q) { %><a class="btn ghost" href="/sahipler">Temizle</a><% } %>
+  </div>
+</form>
+
+<div class="card flush">
+  <% if (!list.length) { %>
+    <% if (q) { %>
+      <div class="empty-state"><span class="es-icon"><%- icon('search') %></span><span class="es-title">Kayıt bulunamadı.</span><span class="es-text">Adın bir kısmını ya da telefonun son hanelerini deneyin.</span></div>
+    <% } else { %>
+      <div class="empty-state"><span class="es-icon"><%- icon('users') %></span><span class="es-title">Henüz hasta sahibi yok</span><span class="es-text">İlk kaydı elle ekleyin ya da mevcut listenizi CSV dosyasıyla tek seferde aktarın.</span>
+        <span class="row"><a class="btn" href="/sahipler/yeni"><%- icon('plus') %>Yeni hasta sahibi</a><% if (user.role === 'admin') { %><a class="btn secondary" href="/iceaktar"><%- icon('upload') %>CSV içe aktar</a><% } %></span></div>
+    <% } %>
+  <% } else { %>
   <table class="cards">
-    <thead><tr><th>Ad</th><th>Telefon</th><th>Hayvan</th><th>SMS</th><th><span class="visually-hidden">İşlemler</span></th></tr></thead>
+    <thead><tr><th scope="col">Ad</th><th scope="col">Telefon</th><th scope="col">Hayvan</th><th scope="col">SMS</th><th scope="col"><span class="visually-hidden">İşlemler</span></th></tr></thead>
     <tbody>
     <% for (const o of list) { %>
     <tr>
-      <td data-label="Ad"><a href="/sahipler/<%= o.id %>"><%= o.name %></a></td>
-      <td class="mono" data-label="Telefon"><a href="tel:<%= o.phone %>"><%= formatPhone(o.phone) %></a></td>
-      <td data-label="Hayvan"><%= o.pet_count %></td>
+      <td data-label="Ad"><a class="cell-title" href="/sahipler/<%= o.id %>"><%= o.name %></a></td>
+      <td class="tnum" data-label="Telefon"><a href="tel:<%= o.phone %>"><%= formatPhone(o.phone) %></a></td>
+      <td class="num-cell" data-label="Hayvan"><%= o.pet_count %></td>
       <td data-label="SMS"><% if (o.sms_opt_in) { %><span class="badge ok">Açık</span><% } else { %><span class="badge cancelled">Kapalı</span><% } %></td>
-      <td class="actions"><a class="btn sm secondary" href="/sahipler/<%= o.id %>">Detay</a></td>
+      <td class="actions"><a class="btn sm secondary" href="/sahipler/<%= o.id %>">Detay<%- icon('chevron-right') %></a></td>
     </tr>
     <% } %>
     </tbody>

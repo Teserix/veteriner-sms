@@ -1,11 +1,12 @@
 <%- include('partials/header') %>
-<h1><%= pet ? 'Hayvanı düzenle' : 'Yeni hayvan' %> <span class="muted small">· <%= owner.name %></span></h1>
-<div class="card">
-  <% if (error) { %><div class="flash err"><%= error %></div><% } %>
+<a class="back-link" href="/sahipler/<%= owner.id %>"><%- icon('arrow-left') %><%= owner.name %></a>
+<div class="page-head"><div><h1><%= pet ? 'Hayvanı düzenle' : 'Yeni hayvan' %></h1><p class="sub">Sahibi: <%= owner.name %></p></div></div>
+<div class="card form-card">
+  <% if (error) { %><div class="flash err" role="alert"><%- icon('alert') %><span><%= error %></span></div><% } %>
   <form method="post" action="<%= pet ? '/hayvanlar/' + pet.id + '/duzenle' : '/sahipler/' + owner.id + '/hayvan/yeni' %>">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
     <div class="form-grid">
-      <div><label for="name">Ad *</label><input id="name" type="text" name="name" required maxlength="80" autocapitalize="words" autocomplete="off" enterkeyhint="next" value="<%= form.name || '' %>"></div>
+      <div><label for="name">Ad <span class="req" aria-hidden="true">*</span></label><input id="name" type="text" name="name" required maxlength="80" autocapitalize="words" autocomplete="off" enterkeyhint="next" value="<%= form.name || '' %>"></div>
       <div><label for="species">Tür</label>
         <select id="species" name="species">
           <% for (const s of SPECIES) { %><option value="<%= s %>" <%= form.species === s ? 'selected' : '' %>><%= s %></option><% } %>
@@ -25,7 +26,7 @@
     <textarea id="notes" name="notes" maxlength="1000"><%= form.notes || '' %></textarea>
     <div class="form-actions">
       <button class="btn" type="submit">Kaydet</button>
-      <a class="btn secondary" href="/sahipler/<%= owner.id %>">Vazgeç</a>
+      <a class="btn ghost" href="/sahipler/<%= owner.id %>">Vazgeç</a>
     </div>
   </form>
 </div>

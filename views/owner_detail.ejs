@@ -1,121 +1,142 @@
 <%- include('partials/header') %>
-<div class="row between">
-  <h1><%= owner.name %></h1>
-  <div class="row">
-    <% if (!anonymized) { %><a class="btn secondary" href="/sahipler/<%= owner.id %>/duzenle">Düzenle</a><% } %>
-    <% if (user.role === 'admin' && !anonymized) { %>
-    <a class="btn sm secondary" href="/sahipler/<%= owner.id %>/veri.json">Veri (JSON)</a>
-    <a class="btn sm secondary" href="/sahipler/<%= owner.id %>/veri.csv">Veri (CSV)</a>
-    <form method="post" action="/sahipler/<%= owner.id %>/anonimlestir" data-confirm="Kişisel bilgiler kalıcı olarak silinecek; kayıt kimliği ve SMS sayıları kalacak. Emin misiniz?">
-      <input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn secondary" type="submit">Anonimleştir</button>
-    </form>
-    <form method="post" action="/sahipler/<%= owner.id %>/sil" data-confirm="Bu hasta sahibi, tüm hayvanları ve hatırlatmaları silinecek; SMS kayıtlarındaki kişisel bilgiler anonimleştirilecek. Emin misiniz?">
-      <input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn danger" type="submit">Sil</button>
-    </form>
-    <% } %>
+<a class="back-link" href="/sahipler"><%- icon('arrow-left') %>Hasta sahipleri</a>
+<div class="page-head">
+  <div>
+    <h1><%= owner.name %></h1>
+    <p class="sub">Kayıt no #<%= owner.id %><% if (owner.import_batch) { %> · içe aktarıldı<% } %> · <%= petList.length %> hayvan</p>
   </div>
-</div>
-<% if (anonymized) { %><div class="flash ok">Bu kayıt anonimleştirilmiş; kişisel bilgiler kalıcı olarak silinmiştir.</div><% } %>
-<div class="card">
-  <div class="row">
-    <div><strong>Telefon:</strong> <% if (anonymized) { %>—<% } else { %><a class="mono" href="tel:<%= owner.phone %>"><%= formatPhone(owner.phone) %></a><% } %></div>
-    <% if (owner.email) { %><div><strong>E-posta:</strong> <%= owner.email %></div><% } %>
-    <% if (owner.address) { %><div><strong>Adres:</strong> <%= owner.address %></div><% } %>
-    <div><strong>SMS:</strong> <% if (owner.sms_opt_in) { %><span class="badge ok">Açık</span><% } else { %><span class="badge cancelled">Kapalı</span><% } %></div>
-    <% if (owner.import_batch) { %><div class="small muted">içe aktarıldı</div><% } %>
-  </div>
-  <% if (owner.notes) { %><p class="pre small"><%= owner.notes %></p><% } %>
-  <% if (owner.sms_opt_in && !anonymized) { %>
-  <form method="post" action="/sahipler/<%= owner.id %>/ret" class="row mt10" data-confirm="Hatırlatma SMS'leri durdurulacak ve ret kaydı tutulacak. Emin misiniz?">
-    <input type="hidden" name="_csrf" value="<%= csrf %>">
-    <select name="channel" aria-label="Ret kanalı"><option value="telefon">Telefonla bildirdi</option><option value="sozlu">Yüz yüze bildirdi</option></select>
-    <input type="text" name="note" maxlength="200" placeholder="not (isteğe bağlı)" class="maxw260">
-    <button class="btn sm secondary" type="submit">SMS'leri durdur (ret)</button>
-  </form>
-  <div class="help">Ret talebi en geç 3 iş günü içinde uygulanmak zorundadır (Ticari İletişim Yön. m.10/1); burada anında uygulanır.</div>
-  <% } %>
-  <% if (consentList.length) { %>
-    <details class="mt10"><summary class="small muted">SMS tercihi geçmişi (<%= consentList.length %>)</summary>
-      <table class="small">
-        <thead><tr><th>Zaman</th><th>İşlem</th><th>Kanal</th><th>Kaydeden</th><th>Not</th></tr></thead>
-        <tbody><% for (const c of consentList) { %>
-          <tr><td><%= formatDateTime(c.created_at) %></td><td><%= c.action === 'grant' ? 'Açıldı' : 'Ret' %></td><td><%= channels[c.channel] || c.channel %></td><td><%= c.actor_email || (c.channel === 'ret_url' ? 'hasta sahibi' : '') %></td><td><%= c.note || '' %></td></tr>
-        <% } %></tbody>
-      </table>
+  <% if (!anonymized) { %>
+  <div class="page-actions">
+    <a class="btn secondary" href="/sahipler/<%= owner.id %>/duzenle"><%- icon('pencil') %>Düzenle</a>
+    <a class="btn" href="/sahipler/<%= owner.id %>/hayvan/yeni"><%- icon('plus') %>Hayvan ekle</a>
+    <% if (user.role === 'admin') { %>
+    <details class="menu icon-menu">
+      <summary class="btn secondary icon-only" aria-label="Diğer işlemler" title="Diğer işlemler"><%- icon('more') %></summary>
+      <div class="menu-panel">
+        <a class="menu-item" href="/sahipler/<%= owner.id %>/veri.json"><%- icon('download') %>Veri (JSON)</a>
+        <a class="menu-item" href="/sahipler/<%= owner.id %>/veri.csv"><%- icon('download') %>Veri (CSV)</a>
+        <div class="menu-sep" role="separator"></div>
+        <form method="post" action="/sahipler/<%= owner.id %>/anonimlestir" data-confirm="Kişisel bilgiler kalıcı olarak silinecek; kayıt kimliği ve SMS sayıları kalacak. Emin misiniz?">
+          <input type="hidden" name="_csrf" value="<%= csrf %>"><button class="menu-item" type="submit"><%- icon('ban') %>Anonimleştir</button>
+        </form>
+        <form method="post" action="/sahipler/<%= owner.id %>/sil" data-confirm="Bu hasta sahibi, tüm hayvanları ve hatırlatmaları silinecek; SMS kayıtlarındaki kişisel bilgiler anonimleştirilecek. Emin misiniz?">
+          <input type="hidden" name="_csrf" value="<%= csrf %>"><button class="menu-item danger" type="submit"><%- icon('trash') %>Sil</button>
+        </form>
+      </div>
     </details>
+    <% } %>
+  </div>
   <% } %>
 </div>
+<% if (anonymized) { %><div class="flash ok"><%- icon('check-circle') %><span>Bu kayıt anonimleştirilmiş; kişisel bilgiler kalıcı olarak silinmiştir.</span></div><% } %>
 
-<div class="row between"><h2>Hayvanlar</h2><a class="btn sm" href="/sahipler/<%= owner.id %>/hayvan/yeni">+ Hayvan ekle</a></div>
-<div class="card">
-  <% if (!petList.length) { %><div class="empty">Henüz hayvan eklenmemiş.</div><% } else { %>
-  <table class="cards">
-    <thead><tr><th>Ad</th><th>Tür / Irk</th><th>Cinsiyet</th><th>Doğum</th><th><span class="visually-hidden">İşlemler</span></th></tr></thead>
-    <tbody>
-    <% for (const p of petList) { %>
-    <tr>
-      <td data-label="Ad"><strong><%= p.name %></strong></td>
-      <td data-label="Tür / Irk"><%= p.species || '' %><%= p.breed ? ' / ' + p.breed : '' %></td>
-      <td data-label="Cinsiyet"><%= p.sex || '' %></td>
-      <td data-label="Doğum"><%= formatDate(p.birth_date) %><% if (p.microchip_no) { %><br><span class="small muted mono">çip <%= p.microchip_no %></span><% } %></td>
-      <td class="actions">
-        <a class="btn sm" href="/hayvanlar/<%= p.id %>/hatirlatma/yeni">+ Hatırlatma</a>
-        <a class="btn sm secondary" href="/hayvanlar/<%= p.id %>/duzenle">Düzenle</a>
-        <% if (user.role === 'admin') { %>
-        <form method="post" action="/hayvanlar/<%= p.id %>/sil" data-confirm="Hayvan ve hatırlatmaları silinecek. Emin misiniz?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn sm danger" type="submit">Sil</button></form>
+<div class="split">
+  <div class="stack">
+    <section class="card" aria-labelledby="h-pets">
+      <div class="card-head">
+        <h2 class="section-title" id="h-pets">Hayvanlar <span class="count-pill"><%= petList.length %></span></h2>
+        <% if (!anonymized) { %><a class="btn sm secondary" href="/sahipler/<%= owner.id %>/hayvan/yeni"><%- icon('plus') %>Hayvan ekle</a><% } %>
+      </div>
+      <% if (!petList.length) { %>
+        <div class="empty-state compact"><span class="es-icon"><%- icon('paw') %></span><span class="es-text">Henüz hayvan eklenmemiş.</span></div>
+      <% } else { %>
+      <div class="pets">
+        <% for (const p of petList) { %>
+        <article class="pet">
+          <div class="pet-head">
+            <span class="pet-avatar" aria-hidden="true"><%- icon('paw') %></span>
+            <div>
+              <div class="pet-name"><%= p.name %></div>
+              <div class="pet-sub"><%= [p.species, p.breed, p.sex].filter(Boolean).join(' · ') || 'Tür belirtilmedi' %></div>
+            </div>
+          </div>
+          <% if (p.birth_date || p.microchip_no) { %>
+          <div class="pet-sub"><% if (p.birth_date) { %>Doğum: <%= formatDate(p.birth_date) %><% } %><% if (p.microchip_no) { %><br><span class="mono">çip <%= p.microchip_no %></span><% } %></div>
+          <% } %>
+          <div class="pet-actions">
+            <a class="btn sm" href="/hayvanlar/<%= p.id %>/hatirlatma/yeni"><%- icon('plus') %>Hatırlatma</a>
+            <a class="btn sm secondary" href="/hayvanlar/<%= p.id %>/duzenle">Düzenle</a>
+            <% if (user.role === 'admin') { %>
+            <form method="post" action="/hayvanlar/<%= p.id %>/sil" data-confirm="<%= p.name %> ve tüm hatırlatmaları silinecek. Emin misiniz?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn sm ghost icon-only" type="submit" aria-label="<%= p.name %> kaydını sil" title="Sil"><%- icon('trash') %></button></form>
+            <% } %>
+          </div>
+        </article>
         <% } %>
-      </td>
-    </tr>
-    <% } %>
-    </tbody>
-  </table>
-  <% } %>
-</div>
+      </div>
+      <% } %>
+    </section>
 
-<h2>Hatırlatmalar</h2>
-<div class="card">
-  <% if (!reminderList.length) { %><div class="empty">Hatırlatma yok.</div><% } else { %>
-  <table class="cards">
-    <thead><tr><th>Tarih</th><th>Hayvan</th><th>Hatırlatma</th><th>Bildirim</th><th>Durum</th><th><span class="visually-hidden">İşlemler</span></th></tr></thead>
-    <tbody>
-    <% for (const r of reminderList) { %>
-    <tr>
-      <td data-label="Tarih"><%= formatDate(r.due_date) %></td>
-      <td data-label="Hayvan"><%= r.pet_name %></td>
-      <td data-label="Hatırlatma"><%= r.title %> <span class="small muted">(<%= REMINDER_TYPES[r.type] || r.type %>)</span><% if (r.repeat_days) { %><br><span class="small muted">her <%= r.repeat_days %> günde tekrar</span><% } %></td>
-      <td class="small" data-label="Bildirim"><%= r.notify_days_before %> gün önce<% if (r.sent_at) { %><br><span class="muted">gönderildi: <%= formatDateTime(r.sent_at) %></span><% } %></td>
-      <td data-label="Durum"><span class="badge <%= r.status %>"><%= STATUS_LABELS[r.status] %></span><% if (r.last_error) { %><br><span class="small muted"><%= r.last_error %></span><% } %></td>
-      <td class="actions">
-        <% if ((r.status === 'pending' || r.status === 'failed') && owner.sms_opt_in) { %>
-          <form method="post" action="/hatirlatmalar/<%= r.id %>/gonder"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn sm" type="submit">SMS gönder</button></form>
-        <% } %>
-        <% if (r.status !== 'done' && r.status !== 'cancelled') { %>
-          <form method="post" action="/hatirlatmalar/<%= r.id %>/durum"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="status" value="done"><button class="btn sm secondary" type="submit">Tamamlandı</button></form>
-        <% } %>
-        <a class="btn sm secondary" href="/hatirlatmalar/<%= r.id %>/duzenle">Düzenle</a>
-      </td>
-    </tr>
-    <% } %>
-    </tbody>
-  </table>
-  <% } %>
-</div>
+    <section class="card flush" aria-labelledby="h-rem">
+      <div class="card-head"><h2 class="section-title" id="h-rem">Hatırlatmalar <span class="count-pill"><%= reminderList.length %></span></h2></div>
+      <% if (!reminderList.length) { %>
+        <div class="empty-state compact"><span class="es-icon"><%- icon('bell') %></span><span class="es-text">Hatırlatma yok. Hayvan kartındaki "+ Hatırlatma" ile ekleyin.</span></div>
+      <% } else { %>
+        <%- include('partials/reminder_list', { rows: reminderList, actions: anonymized ? 'none' : 'full', showOwner: false }) %>
+      <% } %>
+    </section>
 
-<h2>SMS geçmişi</h2>
-<div class="card">
-  <% if (!smsList.length) { %><div class="empty">Bu kişiye henüz SMS gönderilmedi.</div><% } else { %>
-  <table class="cards">
-    <thead><tr><th>Zaman</th><th>Mesaj</th><th>Durum</th></tr></thead>
-    <tbody>
-    <% for (const s of smsList) { %>
-    <tr>
-      <td class="small" data-label="Zaman"><%= formatDateTime(s.created_at) %></td>
-      <td class="small pre" data-label="Mesaj"><%= s.message %></td>
-      <td data-label="Durum"><span class="badge <%= s.status === 'sent' ? 'ok' : 'failed' %>"><%= s.status === 'sent' ? 'Gönderildi' : 'Hata' %></span><% if (s.error) { %><br><span class="small muted"><%= s.error %></span><% } %></td>
-    </tr>
-    <% } %>
-    </tbody>
-  </table>
-  <% } %>
+    <section class="card flush" aria-labelledby="h-sms">
+      <div class="card-head"><h2 class="section-title" id="h-sms">SMS geçmişi <span class="count-pill"><%= smsList.length %></span></h2></div>
+      <% if (!smsList.length) { %>
+        <div class="empty-state compact"><span class="es-icon"><%- icon('message') %></span><span class="es-text">Bu kişiye henüz SMS gönderilmedi.</span></div>
+      <% } else { %>
+      <table class="cards">
+        <thead><tr><th scope="col">Zaman</th><th scope="col">Mesaj</th><th scope="col">Durum</th></tr></thead>
+        <tbody>
+        <% for (const s of smsList) { %>
+        <tr>
+          <td class="small tnum" data-label="Zaman"><%= formatDateTime(s.created_at) %></td>
+          <td class="small pre" data-label="Mesaj"><%= s.message %></td>
+          <td data-label="Durum"><span class="badge <%= s.status === 'sent' ? 'ok' : 'failed' %>"><%= s.status === 'sent' ? 'Gönderildi' : 'Hata' %></span><% if (s.error) { %><span class="cell-sub"><%= s.error %></span><% } %></td>
+        </tr>
+        <% } %>
+        </tbody>
+      </table>
+      <% } %>
+    </section>
+  </div>
+
+  <aside class="stack" aria-label="Kişi bilgileri">
+    <section class="card" aria-labelledby="h-contact">
+      <h2 class="section-title mb0" id="h-contact">İletişim</h2>
+      <ul class="facts mt10">
+        <li><%- icon('phone') %><div><span class="f-label">Telefon</span><span class="f-value"><% if (anonymized) { %>—<% } else { %><a class="tnum" href="tel:<%= owner.phone %>"><%= formatPhone(owner.phone) %></a><% } %></span></div></li>
+        <% if (owner.email) { %><li><%- icon('mail') %><div><span class="f-label">E-posta</span><span class="f-value"><a href="mailto:<%= owner.email %>"><%= owner.email %></a></span></div></li><% } %>
+        <% if (owner.address) { %><li><%- icon('map-pin') %><div><span class="f-label">Adres</span><span class="f-value"><%= owner.address %></span></div></li><% } %>
+      </ul>
+      <% if (owner.notes) { %><div class="preview-box pre small mt10"><%= owner.notes %></div><% } %>
+    </section>
+
+    <section class="card" aria-labelledby="h-pref">
+      <div class="card-head mb0">
+        <h2 class="section-title" id="h-pref">SMS tercihi</h2>
+        <% if (owner.sms_opt_in) { %><span class="badge ok">Açık</span><% } else { %><span class="badge cancelled">Kapalı</span><% } %>
+      </div>
+      <p class="help mt0"><%= owner.sms_opt_in ? 'Aşı ve kontrol hatırlatmaları bu numaraya SMS ile gider.' : 'Bu kişiye hatırlatma SMS\'i gönderilmez.' %></p>
+      <% if (owner.sms_opt_in && !anonymized) { %>
+      <details class="mt10">
+        <summary class="btn sm secondary"><%- icon('ban') %>SMS'leri durdur (ret)</summary>
+        <form method="post" action="/sahipler/<%= owner.id %>/ret" class="mt10" data-confirm="Hatırlatma SMS'leri durdurulacak ve ret kaydı tutulacak. Emin misiniz?">
+          <input type="hidden" name="_csrf" value="<%= csrf %>">
+          <label for="ret-channel">Ret nasıl bildirildi?</label>
+          <select id="ret-channel" name="channel"><option value="telefon">Telefonla bildirdi</option><option value="sozlu">Yüz yüze bildirdi</option></select>
+          <label for="ret-note">Not <span class="muted">(isteğe bağlı)</span></label>
+          <input id="ret-note" type="text" name="note" maxlength="200">
+          <div class="help">Ret talebi en geç 3 iş günü içinde uygulanmak zorundadır (Ticari İletişim Yön. m.10/1); burada anında uygulanır.</div>
+          <div class="form-actions"><button class="btn sm danger" type="submit">SMS'leri durdur</button></div>
+        </form>
+      </details>
+      <% } %>
+      <% if (consentList.length) { %>
+        <details class="mt10"><summary class="small muted link-btn">SMS tercihi geçmişi (<%= consentList.length %>)</summary>
+          <ul class="facts mt10">
+          <% for (const c of consentList) { %>
+            <li><%- icon(c.action === 'grant' ? 'check-circle' : 'ban') %><div><span class="f-value"><strong><%= c.action === 'grant' ? 'Açıldı' : 'Ret' %></strong> · <%= channels[c.channel] || c.channel %></span><span class="f-label"><%= formatDateTime(c.created_at) %><%= (c.actor_email || (c.channel === 'ret_url' ? 'hasta sahibi' : '')) ? ' · ' + (c.actor_email || 'hasta sahibi') : '' %></span><% if (c.note) { %><span class="small"><%= c.note %></span><% } %></div></li>
+          <% } %>
+          </ul>
+        </details>
+      <% } %>
+    </section>
+  </aside>
 </div>
 <%- include('partials/footer') %>

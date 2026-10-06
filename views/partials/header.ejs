@@ -6,8 +6,18 @@
   const _title = (typeof title === 'string') ? title : '';
   const _legalLocked = (typeof legalLocked === 'boolean') ? legalLocked : false;
   const _openRequests = (typeof openRequests === 'number') ? openRequests : 0;
+  const _v = (typeof assetV === 'string') ? assetV : '';
+  const _icon = (typeof icon === 'function') ? icon : () => '';
   const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const nav = (p, label, extra) => `<a href="${esc(p)}" class="${(_path === p || (extra && extra.some((x) => _path.startsWith(x)))) ? 'active' : ''}">${esc(label)}</a>`;
+  const isActive = (p, extra) => _path === p || !!(extra && extra.some((x) => _path.startsWith(x)));
+  const nav = (p, label, ic, extra, count) => {
+    const on = isActive(p, extra);
+    return `<a href="${esc(p)}" class="nav-link${on ? ' active' : ''}"${on ? ' aria-current="page"' : ''}>${_icon(ic)}<span class="nav-label">${esc(label)}</span>${count ? `<span class="nav-count" aria-label="${count} açık">${count}</span>` : ''}</a>`;
+  };
+  const initials = (n) => String(n || '?').trim().split(/\s+/).filter((w) => !/^(dr|vet|hek)\.?$/i.test(w)).slice(0, 2).map((w) => w[0]).join('').toLocaleUpperCase('tr') || '?';
+  const roleLabel = _user ? ({ superadmin: 'Sistem yöneticisi', admin: 'Klinik yöneticisi', staff: 'Personel' }[_user.role] || '') : '';
+  const isClinic = !!(_user && _user.clinicId);
+  const home = _user && _user.role === 'superadmin' ? '/admin' : '/';
 %>
 <!doctype html>
 <html lang="tr">
@@ -25,43 +35,76 @@
   <link rel="icon" href="/static/icons/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/static/icons/icon-192.png" sizes="192x192" type="image/png">
   <title><%= _title ? _title + ' · ' : '' %>Veteriner SMS</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css<%= _v ? '?v=' + _v : '' %>">
 </head>
-<body>
-<header class="topbar">
-  <a class="brand" href="<%= _user && _user.role === 'superadmin' ? '/admin' : '/' %>">🐾 Veteriner SMS<% if (_user && _user.clinicName) { %> <span class="who">· <%= _user.clinicName %></span><% } %></a>
-  <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Menü">
-    <span class="nav-toggle-bar" aria-hidden="true"></span>
-    <span class="nav-toggle-bar" aria-hidden="true"></span>
-    <span class="nav-toggle-bar" aria-hidden="true"></span>
-  </button>
-  <nav id="site-nav" class="site-nav">
-    <% if (_user && _user.clinicId) { %>
-      <%- nav('/', 'Özet') %>
-      <%- nav('/hizli-kayit', 'Hızlı kayıt') %>
-      <%- nav('/sahipler', 'Hasta Sahipleri', ['/sahipler', '/hayvanlar']) %>
-      <%- nav('/hatirlatmalar', 'Hatırlatmalar', ['/hatirlatmalar']) %>
-      <%- nav('/sms', 'SMS Geçmişi', ['/sms']) %>
-      <%- nav('/basvurular', 'KVKK başvuruları' + (_openRequests ? ' (' + _openRequests + ')' : ''), ['/basvurular']) %>
-      <% if (_user.role === 'admin') { %>
-        <%- nav('/iceaktar', 'İçe aktar', ['/iceaktar']) %>
-        <%- nav('/ayarlar', 'Ayarlar', ['/ayarlar']) %>
-        <%- nav('/kullanicilar', 'Kullanıcılar', ['/kullanicilar']) %>
+<body class="<%= _user ? 'has-shell' : 'no-shell' %><%= isClinic ? ' has-tabbar' : '' %>">
+<a class="skip-link" href="#main">İçeriğe geç</a>
+<% if (_user) { %>
+<div class="shell">
+  <aside class="sidebar" id="site-nav" aria-label="Ana menü">
+    <div class="sidebar-head">
+      <a class="brand" href="<%= home %>"><img class="brand-mark" src="/static/icons/favicon.svg" alt="" width="32" height="32"><span class="brand-text">Veteriner SMS</span></a>
+      <button class="icon-btn nav-close" type="button" data-nav-close aria-label="Menüyü kapat"><%- _icon('x') %></button>
+    </div>
+    <% if (_user.clinicName) { %><div class="clinic-chip" title="<%= _user.clinicName %>"><%- _icon('building') %><span><%= _user.clinicName %></span></div><% } %>
+    <nav class="nav">
+      <% if (isClinic) { %>
+        <a class="btn block nav-cta" href="/hizli-kayit"><%- _icon('zap') %>Hızlı kayıt</a>
+        <div class="nav-group">
+          <%- nav('/', 'Özet', 'home') %>
+          <%- nav('/hatirlatmalar', 'Hatırlatmalar', 'bell', ['/hatirlatmalar']) %>
+          <%- nav('/sahipler', 'Hasta Sahipleri', 'users', ['/sahipler', '/hayvanlar']) %>
+          <%- nav('/sms', 'SMS Geçmişi', 'message', ['/sms']) %>
+        </div>
+        <div class="nav-group">
+          <div class="nav-heading">Uyum</div>
+          <%- nav('/basvurular', 'KVKK başvuruları', 'shield', ['/basvurular'], _openRequests) %>
+        </div>
+        <% if (_user.role === 'admin') { %>
+        <div class="nav-group">
+          <div class="nav-heading">Yönetim</div>
+          <%- nav('/iceaktar', 'İçe aktar', 'upload', ['/iceaktar']) %>
+          <%- nav('/kullanicilar', 'Kullanıcılar', 'user-check', ['/kullanicilar']) %>
+          <%- nav('/ayarlar', 'Ayarlar', 'settings', ['/ayarlar']) %>
+        </div>
+        <% } %>
+      <% } else if (_user.role === 'superadmin') { %>
+        <div class="nav-group">
+          <%- nav('/admin', 'Klinikler', 'building', ['/admin/klinik']) %>
+          <%- nav('/admin/denetim', 'Denetim', 'history') %>
+          <%- nav('/admin/ihlaller', 'Veri ihlalleri', 'alert') %>
+        </div>
       <% } %>
-    <% } else if (_user && _user.role === 'superadmin') { %>
-      <%- nav('/admin', 'Klinikler', ['/admin/klinik']) %>
-      <%- nav('/admin/denetim', 'Denetim') %>
-      <%- nav('/admin/ihlaller', 'Veri ihlalleri') %>
-    <% } %>
-    <% if (_user) { %>
-      <%- nav('/sifre', _user.name) %>
-      <form method="post" action="/cikis"><input type="hidden" name="_csrf" value="<%= _csrf %>"><button class="link" type="submit">Çıkış</button></form>
-    <% } %>
-  </nav>
-</header>
-<main>
-<% if (_legalLocked && _user && _user.clinicId && _path !== '/ayarlar') { %>
-  <div class="flash err">SMS gönderimi kilitli: hukuki kimlik bilgileri eksik.<% if (_user.role === 'admin') { %> <a href="/ayarlar#hukuki-kimlik">Ayarlar › Hukuki kimlik</a> bölümünü tamamlayın.<% } else { %> Klinik yöneticisi Ayarlar'dan tamamlamalı.<% } %></div>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="me">
+        <span class="avatar" aria-hidden="true"><%= initials(_user.name) %></span>
+        <span class="me-text"><span class="me-name"><%= _user.name %></span><span class="me-role"><%= roleLabel %></span></span>
+      </div>
+      <div class="me-actions">
+        <a href="/sifre" class="nav-link<%= _path === '/sifre' ? ' active' : '' %>"<%- _path === '/sifre' ? ' aria-current="page"' : '' %>><%- _icon('key') %><span class="nav-label">Parola</span></a>
+        <form method="post" action="/cikis"><input type="hidden" name="_csrf" value="<%= _csrf %>"><button class="nav-link" type="submit"><%- _icon('logout') %><span class="nav-label">Çıkış</span></button></form>
+      </div>
+    </div>
+  </aside>
+  <div class="nav-backdrop" data-nav-close></div>
+  <div class="shell-main">
+    <header class="topbar">
+      <button class="icon-btn nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Menü"><%- _icon('menu') %></button>
+      <a class="brand" href="<%= home %>"><img class="brand-mark" src="/static/icons/favicon.svg" alt="" width="28" height="28"><span class="brand-text"><%= _user.clinicName || 'Veteriner SMS' %></span></a>
+      <% if (isClinic) { %><a class="icon-btn" href="/sahipler" aria-label="Hasta sahibi ara"><%- _icon('search') %></a><% } %>
+    </header>
+<% } else { %>
+<div class="public-shell">
+  <% if (_path !== '/giris') { %>
+  <header class="public-top">
+    <a class="brand" href="/"><img class="brand-mark" src="/static/icons/favicon.svg" alt="" width="32" height="32"><span class="brand-text">Veteriner SMS</span></a>
+  </header>
+  <% } %>
 <% } %>
-<% if (_flash.ok) { %><div class="flash ok"><%= _flash.ok %></div><% } %>
-<% if (_flash.err) { %><div class="flash err"><%= _flash.err %></div><% } %>
+<main id="main" tabindex="-1">
+<% if (_legalLocked && isClinic && _path !== '/ayarlar') { %>
+  <div class="alert danger" role="alert"><%- _icon('alert') %><div><strong>SMS gönderimi kilitli:</strong> hukuki kimlik bilgileri eksik.<% if (_user.role === 'admin') { %> <a href="/ayarlar#hukuki-kimlik">Ayarlar › Hukuki kimlik</a> bölümünü tamamlayın.<% } else { %> Klinik yöneticisi Ayarlar'dan tamamlamalı.<% } %></div></div>
+<% } %>
+<% if (_flash.ok) { %><div class="flash ok" role="status"><%- _icon('check-circle') %><span><%= _flash.ok %></span></div><% } %>
+<% if (_flash.err) { %><div class="flash err" role="alert"><%- _icon('alert') %><span><%= _flash.err %></span></div><% } %>

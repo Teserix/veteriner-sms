@@ -1,0 +1,49 @@
+<%
+  // Kullanım: include('partials/reminder_list', { rows, actions: 'send' | 'full' | 'none', showOwner: true })
+  //   send: yalnızca "Şimdi gönder" (özet)   full: gönder + tamamlandı + düzenle   none: salt okunur
+  const _rows = rows || [];
+  const _actions = (typeof actions === 'string') ? actions : 'none';
+  const _showOwner = (typeof showOwner === 'boolean') ? showOwner : true;
+  const _MONTHS = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+  const _today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Istanbul' });
+  const _dayDiff = (d) => Math.round((Date.parse(String(d).slice(0, 10) + 'T00:00:00Z') - Date.parse(_today + 'T00:00:00Z')) / 86400000);
+  const _rel = (n) => n === 0 ? 'Bugün' : n === 1 ? 'Yarın' : n === -1 ? 'Dün' : n > 0 ? n + ' gün sonra' : (-n) + ' gün geçti';
+%>
+<ul class="rlist">
+<% for (const r of _rows) {
+     const ds = String(r.due_date || '').slice(0, 10);
+     const diff = _dayDiff(ds);
+     const canSend = r.sms_opt_in && (r.status === 'pending' || r.status === 'failed');
+     const open = r.status !== 'done' && r.status !== 'cancelled';
+     const waiting = r.status === 'pending' || r.status === 'failed'; %>
+  <li class="ritem">
+    <div class="rdate<%= diff === 0 && open ? ' today' : (diff < 0 && waiting ? ' past' : '') %>" aria-hidden="true"><span class="d"><%= ds.slice(8, 10) %></span><span class="m"><%= _MONTHS[Number(ds.slice(5, 7)) - 1] || '' %></span></div>
+    <div class="rbody">
+      <div class="rtitle"><span class="rpet"><%= r.pet_name %></span><span class="sep" aria-hidden="true">·</span><span class="what"><%= r.title %></span></div>
+      <div class="rmeta">
+        <span><%- icon('calendar') %><span class="visually-hidden">Randevu:</span><%= formatDate(r.due_date) %><% if (open && Math.abs(diff) <= 30 && (diff >= 0 || waiting)) { %>&nbsp;<span class="rel<%= diff < 0 ? ' past' : '' %>">(<%= _rel(diff) %>)</span><% } %></span>
+        <% if (_showOwner) { %><a href="/sahipler/<%= r.owner_id %>"><%- icon('users') %><%= r.owner_name %></a><span class="tnum"><%= formatPhone(r.owner_phone) %></span><% } %>
+        <% if (r.sent_at) { %><span><%- icon('send') %>SMS <%= formatDateTime(r.sent_at) %></span><% } else if (open) { %><span><%- icon('clock') %>SMS <%= r.notify_days_before ? r.notify_days_before + ' gün önce' : 'aynı gün' %></span><% } %>
+        <% if (r.repeat_days) { %><span><%- icon('history') %>her <%= r.repeat_days %> gün</span><% } %>
+        <% if (r.last_error) { %><span class="err-text"><%- icon('alert') %><%= r.last_error %></span><% } %>
+      </div>
+    </div>
+    <div class="rside">
+      <% if (!r.sms_opt_in && open) { %><span class="badge cancelled">SMS istemiyor</span><% } else if (r.last_error && r.status !== 'failed') { %><span class="badge failed" title="<%= r.last_error %>">Hata (<%= r.attempts %>)</span><% } else { %><span class="badge <%= r.status %>"><%= STATUS_LABELS[r.status] %></span><% } %>
+      <% if (_actions !== 'none') { %>
+      <span class="actions">
+        <% if (canSend) { %>
+        <form method="post" action="/hatirlatmalar/<%= r.id %>/gonder" data-confirm="<%= r.owner_name %> (<%= formatPhone(r.owner_phone) %>) numarasına &quot;<%= r.title %>&quot; hatırlatma SMS'i şimdi gönderilsin mi?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn sm secondary" type="submit"><%- icon('send') %><%= _actions === 'send' ? 'Şimdi gönder' : 'SMS gönder' %></button></form>
+        <% } %>
+        <% if (_actions === 'full' && open) { %>
+        <form method="post" action="/hatirlatmalar/<%= r.id %>/durum"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="status" value="done"><button class="btn sm secondary" type="submit"><%- icon('check') %>Tamamlandı</button></form>
+        <% } %>
+        <% if (_actions === 'full') { %>
+        <a class="btn sm ghost icon-only" href="/hatirlatmalar/<%= r.id %>/duzenle" aria-label="Düzenle: <%= r.pet_name %> – <%= r.title %>" title="Düzenle"><%- icon('pencil') %></a>
+        <% } %>
+      </span>
+      <% } %>
+    </div>
+  </li>
+<% } %>
+</ul>

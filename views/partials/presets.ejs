@@ -1,0 +1,11 @@
+<%
+  // Sık kullanılan hatırlatma kalıpları: tıklayınca tür, başlık ve tekrar alanlarını doldurur (public/app.js)
+  const PRESETS = [
+    ['asi', 'Kuduz aşısı', 365], ['asi', 'Karma aşı', 365], ['asi', 'Bronşin aşısı', 365],
+    ['parazit', 'İç parazit', 90], ['parazit', 'Dış parazit', 30], ['kontrol', 'Yıllık kontrol', 365],
+  ];
+%>
+<div class="presets" role="group" aria-label="Hazır kalıplar">
+  <span class="presets-label">Hazır kalıp:</span>
+  <% for (const [t, title, rep] of PRESETS) { %><button type="button" class="chip" data-preset-type="<%= t %>" data-preset-title="<%= title %>" data-preset-repeat="<%= rep %>"><%= title %> <span class="muted">· <%= rep %> gün</span></button><% } %>
+</div>

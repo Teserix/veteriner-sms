@@ -1,73 +1,144 @@
 <%- include('partials/header') %>
-<h1>Özet</h1>
-<% if (settings.sms_provider === 'console') { %>
-  <div class="warnbox">SMS sağlayıcısı <strong>Konsol (test)</strong> modunda; gerçek SMS gönderilmiyor.
-  <% if (user.role === 'admin') { %><a href="/ayarlar">Ayarlar</a> sayfasından sağlayıcı bilgilerini girin.<% } %></div>
-<% } %>
-<% if (settings.scheduler_enabled !== '1') { %>
-  <div class="warnbox">Otomatik gönderim bu klinik için <strong>kapalı</strong>. Hatırlatmalar yalnızca elle gönderilir.</div>
-<% } %>
-<div class="grid grid-3">
-  <div class="card stat"><div class="num"><%= counts.owners %></div><div class="lbl">Hasta sahibi</div></div>
-  <div class="card stat"><div class="num"><%= counts.pets %></div><div class="lbl">Hayvan</div></div>
-  <div class="card stat"><div class="num"><%= counts.pending %></div><div class="lbl">Bekleyen hatırlatma</div></div>
-  <div class="card stat"><div class="num"><%= counts.smsSentMonth %></div><div class="lbl"><%= counts.monthLabel %> ayında gönderilen SMS<% if (counts.smsFailedMonth) { %> <span class="badge failed"><%= counts.smsFailedMonth %> hata</span><% } %><br><span class="small">Bugün: <%= counts.usedToday %> / <%= counts.capToday %></span></div></div>
-</div>
-
 <%
-  const rowsTable = (rows, showSend) => { %>
-  <table class="cards">
-    <thead><tr><th>Tarih</th><th>Sahip</th><th>Hayvan</th><th>Hatırlatma</th><th>Durum</th><% if (showSend) { %><th><span class="visually-hidden">İşlemler</span></th><% } %></tr></thead>
-    <tbody>
-    <% for (const r of rows) { %>
-    <tr>
-      <td data-label="Tarih"><%= formatDate(r.due_date) %></td>
-      <td data-label="Sahip"><a href="/sahipler/<%= r.owner_id %>"><%= r.owner_name %></a><br><span class="small muted mono"><%= formatPhone(r.owner_phone) %></span></td>
-      <td data-label="Hayvan"><%= r.pet_name %></td>
-      <td data-label="Hatırlatma"><%= r.title %></td>
-      <td data-label="Durum"><% if (!r.sms_opt_in) { %><span class="badge cancelled">SMS istemiyor</span><% } else if (r.last_error) { %><span class="badge failed" title="<%= r.last_error %>">Hata (<%= r.attempts %>)</span><% } else { %><span class="badge <%= r.status %>"><%= STATUS_LABELS[r.status] %></span><% } %></td>
-      <% if (showSend) { %>
-      <td class="actions">
-        <% if (r.sms_opt_in && (r.status === 'pending' || r.status === 'failed')) { %>
-        <form method="post" action="/hatirlatmalar/<%= r.id %>/gonder"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn sm" type="submit">Şimdi gönder</button></form>
-        <% } %>
-      </td>
+  const tz = 'Europe/Istanbul';
+  const now = new Date();
+  const hour = Number(now.toLocaleString('en-GB', { timeZone: tz, hour: '2-digit', hour12: false }));
+  const greet = hour < 12 ? 'Günaydın' : (hour < 18 ? 'İyi günler' : 'İyi akşamlar');
+  const firstName = String(user.name || '').split(/\s+/).filter((w) => !/^(dr|vet|hek)\.?$/i.test(w))[0] || '';
+  const todayLabel = now.toLocaleDateString('tr-TR', { timeZone: tz, weekday: 'long', day: 'numeric', month: 'long' });
+  const attention = overdue.length + failed.length;
+  const capPct = counts.capToday ? Math.min(100, Math.round((counts.usedToday / counts.capToday) * 20) * 5) : 0;
+  const schedulerOn = settings.scheduler_enabled === '1';
+  const dayLabel = (d) => new Date(String(d).slice(0, 10) + 'T12:00:00Z').toLocaleDateString('tr-TR', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' });
+  const byDay = [];
+  for (const r of upcoming) {
+    const k = String(r.due_date).slice(0, 10);
+    const last = byDay[byDay.length - 1];
+    if (last && last.day === k) last.items.push(r); else byDay.push({ day: k, items: [r] });
+  }
+%>
+<div class="page-head">
+  <div>
+    <div class="eyebrow"><%= todayLabel %></div>
+    <h1><%= greet %><%= firstName ? ', ' + firstName : '' %></h1>
+    <p class="sub">Özet · bugün yapılacaklar ve yaklaşan hatırlatmalar</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn secondary" href="/sahipler/yeni"><%- icon('plus') %>Hasta sahibi</a>
+    <a class="btn" href="/hizli-kayit"><%- icon('zap') %>Hızlı kayıt</a>
+  </div>
+</div>
+
+<% if (settings.sms_provider === 'console') { %>
+  <div class="alert info"><%- icon('info') %><div>SMS sağlayıcısı <strong>Konsol (test)</strong> modunda; gerçek SMS gönderilmiyor.<% if (user.role === 'admin') { %> <a href="/ayarlar#saglayici">Sağlayıcı bilgilerini girin</a>.<% } %></div></div>
+<% } %>
+<% if (!schedulerOn) { %>
+  <div class="alert warn"><%- icon('clock') %><div>Otomatik gönderim bu klinik için <strong>kapalı</strong>. Hatırlatmalar yalnızca elle gönderilir.<% if (user.role === 'admin') { %> <a href="/ayarlar#gonderim">Gönderim ayarları</a><% } %></div></div>
+<% } %>
+
+<div class="kpis">
+  <a class="kpi accent" href="#bugun">
+    <div class="kpi-top"><span class="kpi-label">Bugün gönderilecek</span><span class="kpi-icon"><%- icon('send') %></span></div>
+    <div class="kpi-value"><%= due.length %></div>
+    <div class="kpi-foot"><%= schedulerOn ? `Otomatik: ${settings.send_hour_start}:00 – ${settings.send_hour_end}:00` : 'Otomatik gönderim kapalı' %></div>
+  </a>
+  <a class="kpi attn<%= attention ? ' hot' : '' %>" href="<%= attention ? '#dikkat' : '/hatirlatmalar?status=failed' %>">
+    <div class="kpi-top"><span class="kpi-label">Dikkat gerektiren</span><span class="kpi-icon"><%- icon('alert') %></span></div>
+    <div class="kpi-value"><%= attention %></div>
+    <div class="kpi-foot"><%= overdue.length %> süresi geçmiş · <%= failed.length %> gönderilemedi</div>
+  </a>
+  <a class="kpi" href="/hatirlatmalar?status=pending">
+    <div class="kpi-top"><span class="kpi-label">Bekleyen hatırlatma</span><span class="kpi-icon"><%- icon('bell') %></span></div>
+    <div class="kpi-value"><%= counts.pending %></div>
+    <div class="kpi-foot"><%= counts.owners %> hasta sahibi · <%= counts.pets %> hayvan</div>
+  </a>
+  <a class="kpi" href="/sms">
+    <div class="kpi-top"><span class="kpi-label"><%= counts.monthLabel %> ayında gönderilen SMS</span><span class="kpi-icon"><%- icon('message') %></span></div>
+    <div class="kpi-value"><%= counts.smsSentMonth %><% if (counts.smsFailedMonth) { %> <span class="badge failed"><%= counts.smsFailedMonth %> hata</span><% } %></div>
+    <div class="meter<%= capPct >= 80 ? ' hot' : '' %>" role="img" aria-label="Bugünkü SMS kullanımı: <%= counts.usedToday %> / <%= counts.capToday %>"><span class="w-<%= capPct %>"></span></div>
+    <div class="kpi-foot">Bugün: <%= counts.usedToday %> / <%= counts.capToday %> günlük sınır</div>
+  </a>
+</div>
+
+<div class="split">
+  <div class="stack">
+    <section class="card flush" id="bugun" aria-labelledby="h-bugun">
+      <div class="card-head">
+        <div>
+          <h2 class="section-title" id="h-bugun">Bugün SMS'i gönderilecekler <span class="count-pill brand"><%= due.length %></span></h2>
+          <p class="sub"><%= schedulerOn ? `Zamanlayıcı ${settings.send_hour_start}:00 – ${settings.send_hour_end}:00 arasında otomatik gönderir. Beklemeden göndermek için "Şimdi gönder"i kullanın.` : 'Otomatik gönderim kapalı; listedekileri elle gönderin.' %></p>
+        </div>
+      </div>
+      <% if (!due.length) { %>
+        <div class="empty-state ok"><span class="es-icon"><%- icon('check-circle') %></span><span class="es-title">Bugün gönderilecek hatırlatma yok</span><span class="es-text">Yeni bir hasta geldiğinde "Hızlı kayıt" ile sahibini, hayvanını ve ilk hatırlatmasını tek seferde girebilirsiniz.</span></div>
+      <% } else { %>
+        <%- include('partials/reminder_list', { rows: due, actions: 'send' }) %>
       <% } %>
-    </tr>
+    </section>
+
+    <% if (attention) { %>
+    <section class="card flush" id="dikkat" aria-labelledby="h-dikkat">
+      <% if (failed.length) { %>
+      <div class="card-head">
+        <div>
+          <h2 class="section-title" id="h-dikkat">Gönderilemeyenler <span class="count-pill err"><%= failed.length %></span></h2>
+          <p class="sub">Üç deneme de başarısız oldu (sağlayıcı ayarı, bakiye ya da numara sorunu olabilir). Sorunu giderdikten sonra "Şimdi gönder" ile yeniden deneyin.</p>
+        </div>
+      </div>
+      <%- include('partials/reminder_list', { rows: failed, actions: 'send' }) %>
+      <% } %>
+      <% if (overdue.length) { %>
+      <div class="card-head<%= failed.length ? ' mt24' : '' %>">
+        <div>
+          <h2 class="section-title"<%- failed.length ? '' : ' id="h-dikkat"' %>>Süresi geçmiş <span class="count-pill warn"><%= overdue.length %></span></h2>
+          <p class="sub">Randevu tarihi 3 günden fazla geçmiş ve SMS gönderilmemiş. Otomatik gönderilmez; isterseniz elle gönderin, tamamlayın ya da iptal edin.</p>
+        </div>
+      </div>
+      <%- include('partials/reminder_list', { rows: overdue, actions: 'send' }) %>
+      <% } %>
+    </section>
     <% } %>
-    </tbody>
-  </table>
-<% }; %>
+  </div>
 
-<h2>Bugün SMS'i gönderilecekler (<%= due.length %>)</h2>
-<div class="card">
-  <p class="small muted">Zamanlayıcı <%= settings.send_hour_start %>:00 – <%= settings.send_hour_end %>:00 arasında otomatik gönderir. Beklemeden göndermek için "Şimdi gönder"i kullanabilirsiniz.</p>
-  <% if (!due.length) { %><div class="empty">Bugün gönderilecek hatırlatma yok.</div><% } else { rowsTable(due, true); } %>
-</div>
+  <aside class="stack" aria-label="Yaklaşanlar">
+    <section class="card flush" aria-labelledby="h-yarin">
+      <div class="card-head"><h2 class="section-title" id="h-yarin">Yarın gönderilecekler <span class="count-pill"><%= tomorrow.length %></span></h2></div>
+      <% if (!tomorrow.length) { %>
+        <div class="empty-state compact"><span class="es-icon"><%- icon('inbox') %></span><span class="es-text">Yarın için hatırlatma yok.</span></div>
+      <% } else { %>
+        <ul class="agenda"><li class="agenda-day"><ul class="agenda-items">
+          <% for (const r of tomorrow) { %>
+          <li><span class="a-main"><a href="/sahipler/<%= r.owner_id %>"><%= r.pet_name %></a> <span class="what">· <%= r.title %></span></span><span class="small muted tnum"><%= formatDate(r.due_date) %></span></li>
+          <% } %>
+        </ul></li></ul>
+      <% } %>
+    </section>
 
-<h2>Yarın gönderilecekler (<%= tomorrow.length %>)</h2>
-<div class="card">
-  <% if (!tomorrow.length) { %><div class="empty">Yarın için hatırlatma yok.</div><% } else { rowsTable(tomorrow, false); } %>
-</div>
-
-<% if (overdue.length) { %>
-<h2>Süresi geçmiş (<%= overdue.length %>)</h2>
-<div class="card">
-  <p class="small muted">Randevu tarihi 3 günden fazla geçmiş ve SMS gönderilmemiş. Otomatik gönderilmez; isterseniz elle gönderin, tamamlayın ya da iptal edin.</p>
-  <% rowsTable(overdue, true); %>
-</div>
-<% } %>
-
-<% if (failed.length) { %>
-<h2>Gönderilemeyenler (<%= failed.length %>)</h2>
-<div class="card">
-  <p class="small muted">Üç deneme de başarısız oldu (sağlayıcı ayarı, bakiye ya da numara sorunu olabilir). Sorunu giderdikten sonra "Şimdi gönder" ile yeniden deneyin.</p>
-  <% rowsTable(failed, true); %>
-</div>
-<% } %>
-
-<h2>Önümüzdeki 7 gün</h2>
-<div class="card">
-  <% if (!upcoming.length) { %><div class="empty">Yaklaşan hatırlatma yok.</div><% } else { rowsTable(upcoming, false); } %>
+    <section class="card flush" aria-labelledby="h-hafta">
+      <div class="card-head">
+        <div>
+          <h2 class="section-title" id="h-hafta">Önümüzdeki 7 gün</h2>
+          <p class="sub">Randevu tarihine göre</p>
+        </div>
+        <a class="small" href="/hatirlatmalar?range=week">Tümü</a>
+      </div>
+      <% if (!byDay.length) { %>
+        <div class="empty-state compact"><span class="es-icon"><%- icon('calendar') %></span><span class="es-text">Yaklaşan hatırlatma yok.</span></div>
+      <% } else { %>
+        <ul class="agenda">
+          <% for (const g of byDay) { %>
+          <li class="agenda-day">
+            <div class="agenda-date"><%= dayLabel(g.day) %></div>
+            <ul class="agenda-items">
+              <% for (const r of g.items) { %>
+              <li><span class="a-main"><a href="/sahipler/<%= r.owner_id %>"><%= r.pet_name %></a> <span class="what">· <%= r.title %></span></span><span class="badge <%= r.status %>"><%= STATUS_LABELS[r.status] %></span></li>
+              <% } %>
+            </ul>
+          </li>
+          <% } %>
+        </ul>
+      <% } %>
+    </section>
+  </aside>
 </div>
 <%- include('partials/footer') %>

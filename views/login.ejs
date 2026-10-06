@@ -1,8 +1,12 @@
 <%- include('partials/header') %>
 <div class="login-wrap">
-  <h1>Giriş</h1>
-  <div class="card">
-    <% if (error) { %><div class="flash err"><%= error %></div><% } %>
+  <div class="card auth-card">
+    <div class="auth-head">
+      <img class="brand-mark" src="/static/icons/favicon.svg" alt="" width="52" height="52">
+      <h1>Giriş</h1>
+      <p>Klinik hesabınızla oturum açın</p>
+    </div>
+    <% if (error) { %><div class="flash err" role="alert"><%- icon('alert') %><span><%= error %></span></div><% } %>
     <form method="post" action="/giris">
       <input type="hidden" name="_csrf" value="<%= preToken %>">
       <input type="hidden" name="next" value="<%= next || '/' %>">
@@ -10,8 +14,9 @@
       <input id="email" type="email" name="email" required autocomplete="username" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next" autofocus value="<%= email || '' %>">
       <label for="password">Parola</label>
       <input id="password" type="password" name="password" required autocomplete="current-password" enterkeyhint="go">
-      <div class="form-actions"><button class="btn" type="submit">Giriş yap</button></div>
+      <div class="form-actions"><button class="btn block" type="submit">Giriş yap</button></div>
     </form>
+    <p class="auth-foot">Parolanızı mı unuttunuz? Klinik yöneticinizden geçici parola isteyin.</p>
   </div>
 </div>
 <%- include('partials/footer') %>

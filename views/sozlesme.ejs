@@ -1,11 +1,11 @@
 <%- include('partials/header') %>
-<h1>Sözleşme onayı</h1>
+<div class="page-head"><div><h1>Sözleşme onayı</h1><p class="sub">Uygulamayı kullanmaya başlamadan önce</p></div></div>
 <% if (pending.length) { %>
   <div class="warnbox">Kliniğinizin uygulamayı kullanabilmesi için aşağıdaki belgelerin güncel sürümünün klinik yöneticisi tarafından kabul edilmesi gerekir. Her belgeyi okuyup kendi kutusunu işaretleyin.</div>
 <% } else { %>
   <div class="flash ok">Tüm belgelerin güncel sürümü kabul edilmiş. Kopyaları Ayarlar › Sözleşmeler bölümünde.</div>
 <% } %>
-<% if (error) { %><div class="flash err"><%= error %></div><% } %>
+<% if (error) { %><div class="flash err" role="alert"><%- icon('alert') %><span><%= error %></span></div><% } %>
 <form method="post" action="/sozlesme">
   <input type="hidden" name="_csrf" value="<%= csrf %>">
   <% for (const d of docs) { %>
