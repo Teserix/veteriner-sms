@@ -1,4 +1,6 @@
+import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { config } from './config.js';
@@ -19,6 +21,23 @@ import { log } from './log.js';
 import { formatPhone, formatDate, formatDateTime, REMINDER_TYPES, STATUS_LABELS, SPECIES } from './util.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+
+/** Statik varlıkların içerik özeti: sürüm değişince tarayıcı ve service worker önbelleği eski CSS/JS'i kullanmaz */
+const ASSET_VERSION = (() => {
+  const h = crypto.createHash('sha256');
+  for (const f of ['style.css', 'app.js', 'icons/sprite.svg']) {
+    try { h.update(fs.readFileSync(path.join(PUBLIC_DIR, f))); } catch { /* yoksa atla */ }
+  }
+  return h.digest('hex').slice(0, 10);
+})();
+
+const ICON_NAME = /^[a-z-]+$/;
+/** Simge: <%- icon('send') %> → dekoratif SVG (ekran okuyucudan gizli; anlamı yanındaki metin taşır) */
+function icon(name, cls = '') {
+  if (!ICON_NAME.test(name)) return '';
+  return `<svg class="icon${cls ? ' ' + cls : ''}" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg?v=${ASSET_VERSION}#i-${name}"/></svg>`;
+}
 
 /** Express uygulamasını kurar (dinlemez). Testler doğrudan bunu kullanır. */
 export function createApp() {
@@ -33,6 +52,7 @@ export function createApp() {
   Object.assign(app.locals, {
     user: null, csrf: '', settings: {}, currentPath: '', flash: { ok: '', err: '' },
     formatPhone, formatDate, formatDateTime, REMINDER_TYPES, STATUS_LABELS, SPECIES,
+    icon, assetV: ASSET_VERSION,
   });
 
   /* ---------- Güvenlik başlıkları ---------- */
@@ -47,7 +67,7 @@ export function createApp() {
     next();
   });
 
-  const publicDir = path.join(__dirname, '..', 'public');
+  const publicDir = PUBLIC_DIR;
   app.use('/static', express.static(publicDir, { maxAge: '1h' }));
   app.use('/api', opsRouter);
 

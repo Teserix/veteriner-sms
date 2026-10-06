@@ -1,9 +1,7 @@
 <%- include('partials/header') %>
-<div class="row between">
-  <h1><%= clinic.name %> <% if (!clinic.active) { %><span class="badge cancelled">Pasif</span><% } %></h1>
-  <a class="btn secondary" href="/admin">← Klinikler</a>
-</div>
-<% if (error) { %><div class="flash err"><%= error %></div><% } %>
+<a class="back-link" href="/admin"><%- icon('arrow-left') %>Klinikler</a>
+<div class="page-head"><div><h1><%= clinic.name %> <% if (!clinic.active) { %><span class="badge cancelled">Pasif</span><% } %></h1><p class="sub mono">tenants/<%= clinic.id %>.db</p></div></div>
+<% if (error) { %><div class="flash err" role="alert"><%- icon('alert') %><span><%= error %></span></div><% } %>
 <% if (tempPassword) { %>
 <div class="card tempbox">
   <strong><%= tempFor.name %></strong> (<%= tempFor.email %>) için geçici parola: <code class="mono big"><%= tempPassword %></code>
@@ -66,9 +64,9 @@
   <form method="post" action="/admin/klinik/<%= clinic.id %>/kullanici">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
     <div class="form-grid">
-      <div><label for="u_name">Ad Soyad *</label><input id="u_name" type="text" name="name" required maxlength="80" autocapitalize="words" autocomplete="off" value="<%= userForm.name || '' %>"></div>
-      <div><label for="u_email">E-posta *</label><input id="u_email" type="email" name="email" required maxlength="120" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" value="<%= userForm.email || '' %>"></div>
-      <div><label for="u_password">Geçici parola *</label><input id="u_password" type="password" name="password" required autocomplete="new-password"><div class="help">En az 8 karakter, harf ve rakam. Kullanıcı ilk girişte değiştirir.</div></div>
+      <div><label for="u_name">Ad Soyad <span class="req" aria-hidden="true">*</span></label><input id="u_name" type="text" name="name" required maxlength="80" autocapitalize="words" autocomplete="off" value="<%= userForm.name || '' %>"></div>
+      <div><label for="u_email">E-posta <span class="req" aria-hidden="true">*</span></label><input id="u_email" type="email" name="email" required maxlength="120" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" value="<%= userForm.email || '' %>"></div>
+      <div><label for="u_password">Geçici parola <span class="req" aria-hidden="true">*</span></label><input id="u_password" type="password" name="password" required autocomplete="new-password"><div class="help">En az 8 karakter, harf ve rakam. Kullanıcı ilk girişte değiştirir.</div></div>
       <div><label for="u_role">Rol</label>
         <select id="u_role" name="role">
           <option value="staff" <%= userForm.role !== 'admin' ? 'selected' : '' %>>Personel</option>
@@ -90,7 +88,7 @@
 </div>
 
 <h2>Tehlikeli işlemler</h2>
-<div class="card">
+<div class="card danger-zone">
   <div class="row between">
     <form method="post" action="/admin/klinik/<%= clinic.id %>/durum"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="active" value="<%= clinic.active ? 0 : 1 %>"><button class="btn secondary" type="submit"><%= clinic.active ? 'Pasifleştir (kullanıcılar giriş yapamaz)' : 'Aktifleştir' %></button></form>
   </div>

@@ -1,11 +1,10 @@
 <%- include('partials/header') %>
-<h1>Önizleme</h1>
-<p class="muted small"><strong><%= batch.filename %></strong> · <%= list.length %> satır. Aynı telefon numarası tek hasta sahibinde birleştirilir; zaten kayıtlı sahiplere yalnızca yeni hayvanlar eklenir. Hatalı satırlar aktarılmaz.</p>
-<div class="grid grid-3">
-  <div class="card stat"><div class="num"><%= counts.new_owner %></div><div class="lbl">Yeni sahip</div></div>
-  <div class="card stat"><div class="num"><%= counts.add_pet %></div><div class="lbl">Mevcut sahibe hayvan</div></div>
-  <div class="card stat"><div class="num"><%= counts.skip_duplicate %></div><div class="lbl">Zaten kayıtlı (atlanacak)</div></div>
-  <div class="card stat"><div class="num"><%= counts.error %></div><div class="lbl">Hatalı satır</div></div>
+<div class="page-head"><div><div class="eyebrow">Adım 3 / 3 · Onay</div><h1>Önizleme</h1><p class="sub"><strong><%= batch.filename %></strong> · <%= list.length %> satır. Aynı telefon numarası tek hasta sahibinde birleştirilir; zaten kayıtlı sahiplere yalnızca yeni hayvanlar eklenir. Hatalı satırlar aktarılmaz.</p></div></div>
+<div class="kpis">
+  <div class="kpi accent"><span class="kpi-label">Yeni sahip</span><span class="kpi-value"><%= counts.new_owner %></span></div>
+  <div class="kpi"><span class="kpi-label">Mevcut sahibe hayvan</span><span class="kpi-value"><%= counts.add_pet %></span></div>
+  <div class="kpi"><span class="kpi-label">Zaten kayıtlı (atlanacak)</span><span class="kpi-value"><%= counts.skip_duplicate %></span></div>
+  <div class="kpi<%= counts.error ? ' attn hot' : '' %>"><span class="kpi-label">Hatalı satır</span><span class="kpi-value"><%= counts.error %></span></div>
 </div>
 <div class="card">
   <div class="row">
@@ -14,8 +13,8 @@
       <input type="hidden" name="_csrf" value="<%= csrf %>">
       <fieldset class="mt0">
         <legend><strong>SMS tercihi beyanı</strong> (zorunlu)</legend>
-        <label class="checkbox"><input type="radio" name="consent_declaration" value="own" required> Bu listedeki kişiler kliniğimizin hastasıdır; iletişim bilgilerini bizimle iletişim kurulması için kendileri vermiştir. Hatırlatma SMS'leri <strong>açık</strong> başlasın.</label>
-        <label class="checkbox"><input type="radio" name="consent_declaration" value="unknown" required> Emin değilim / üçüncü kaynaktan alınmış liste. SMS <strong>kapalı</strong> başlasın; her hasta kliniğe geldiğinde tek tek açılır.</label>
+        <label class="checkbox choice"><input type="radio" name="consent_declaration" value="own" required> Bu listedeki kişiler kliniğimizin hastasıdır; iletişim bilgilerini bizimle iletişim kurulması için kendileri vermiştir. Hatırlatma SMS'leri <strong>açık</strong> başlasın.</label>
+        <label class="checkbox choice"><input type="radio" name="consent_declaration" value="unknown" required> Emin değilim / üçüncü kaynaktan alınmış liste. SMS <strong>kapalı</strong> başlasın; her hasta kliniğe geldiğinde tek tek açılır.</label>
         <div class="help">Beyan, tarih ve kullanıcı adınızla her kayda işlenir (Ticari İletişim Yön. m.6/1, m.13/1). Hastanız olmayan kişilere hatırlatma göndermek onaysız ticari ileti sayılır.</div>
       </fieldset>
       <button class="btn mt10" type="submit">Onayla ve içe aktar</button>

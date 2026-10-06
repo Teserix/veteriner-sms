@@ -1,26 +1,41 @@
 <%- include('partials/header') %>
-<h1>Ayarlar</h1>
+<div class="page-head"><div><h1>Ayarlar</h1><p class="sub">Klinik bilgileri, SMS şablonu, gönderim kuralları ve sağlayıcı hesabı</p></div></div>
 <% if (legalIssues.length) { %>
-  <div class="warnbox"><strong>SMS gönderimi kilitli.</strong> Hatırlatma gönderilebilmesi için aşağıdaki hukuki kimlik bölümü tamamlanmalı:
-    <ul class="mt10"><% for (const p of legalIssues) { %><li><%= p %></li><% } %></ul>
-  </div>
+  <div class="alert danger" role="alert"><%- icon('alert') %><div><strong>SMS gönderimi kilitli.</strong> Hatırlatma gönderilebilmesi için aşağıdaki hukuki kimlik bölümü tamamlanmalı:
+    <ul><% for (const p of legalIssues) { %><li><%= p %></li><% } %></ul>
+  </div></div>
 <% } %>
+<div class="settings-layout">
+<nav class="toc" aria-label="Ayar bölümleri">
+  <div class="toc-heading">Bölümler</div>
+  <a href="#klinik">Klinik bilgileri</a>
+  <a href="#hukuki-kimlik">Hukuki kimlik</a>
+  <a href="#sablon">SMS şablonu</a>
+  <a href="#gonderim">Otomatik gönderim</a>
+  <a href="#saklama">Saklama ve imha</a>
+  <a href="#saglayici">SMS sağlayıcısı</a>
+  <a href="#test">Test SMS</a>
+  <a href="#aydinlatma">Aydınlatma metni</a>
+  <a href="#sozlesmeler">Sözleşmeler</a>
+  <a href="#yetki">Yetki matrisi</a>
+</nav>
+<div>
 <form method="post" action="/ayarlar">
   <input type="hidden" name="_csrf" value="<%= csrf %>">
-  <div class="card">
-    <h2 class="mt0">Klinik bilgileri</h2>
+  <div class="card" id="klinik">
+    <h2 class="card-title">Klinik bilgileri</h2>
     <div class="form-grid">
       <div><label for="clinic_name">Klinik adı</label><input id="clinic_name" type="text" name="clinic_name" maxlength="80" value="<%= settings.clinic_name %>"></div>
-      <div><label for="clinic_phone">Klinik telefonu *</label><input id="clinic_phone" type="tel" name="clinic_phone" maxlength="30" inputmode="tel" autocomplete="off" value="<%= settings.clinic_phone %>">
+      <div><label for="clinic_phone">Klinik telefonu <span class="req" aria-hidden="true">*</span></label><input id="clinic_phone" type="tel" name="clinic_phone" maxlength="30" inputmode="tel" autocomplete="off" value="<%= settings.clinic_phone %>">
         <div class="help">Her SMS'in sonuna eklenir (Ticari İletişim Yön. m.8/5: erişilebilir iletişim bilgisi).</div></div>
     </div>
   </div>
 
   <div class="card" id="hukuki-kimlik">
-    <h2 class="mt0">Hukuki kimlik</h2>
+    <h2 class="card-title">Hukuki kimlik <% if (legalIssues.length) { %><span class="badge failed">eksik</span><% } else { %><span class="badge ok">tamam</span><% } %></h2>
     <div class="help">Kısa mesajda gönderenin kimliği zorunludur: tacirler için MERSİS numarası, esnaflar için ad-soyad ile vergi/T.C. kimlik numarası (Ticari İletişim ve Ticari Elektronik İletiler Hakkında Yönetmelik m.8/3). Bu satır her SMS'in sonuna sistem tarafından eklenir.</div>
     <div class="form-grid mt10">
-      <div><label for="legal_form">İşletme türü *</label>
+      <div><label for="legal_form">İşletme türü <span class="req" aria-hidden="true">*</span></label>
         <select id="legal_form" name="legal_form">
           <option value="" <%= !settings.legal_form ? 'selected' : '' %>>Seçin</option>
           <option value="tacir" <%= settings.legal_form === 'tacir' ? 'selected' : '' %>>Tacir (şirket / ticaret siciline kayıtlı)</option>
@@ -36,22 +51,23 @@
     <% if (settings.m61_declared_at) { %>
       <div class="help mt10"><span class="badge ok">Beyan verildi</span> <%= formatDateTime(settings.m61_declared_at) %> — Hasta sahiplerinin iletişim bilgilerini kendileriyle iletişim kurulması amacıyla verdiği ve iletilerin yalnızca bu klinikte temin edilen hizmetlere ilişkin bakım hatırlatması olduğu beyan edilmiştir (Yön. m.6/1).</div>
     <% } else { %>
-      <label class="checkbox mt10"><input type="checkbox" name="m61_declare" value="1"> Hasta sahipleri iletişim bilgilerini kliniğimizle iletişim kurulması amacıyla vermiştir; gönderilecek iletiler yalnızca bu klinikte temin edilen hizmetlere ilişkin değişiklik, kullanım ve bakım (aşı, kontrol, parazit) hatırlatmasıdır; tanıtım veya kampanya içermez. *</label>
+      <label class="checkbox mt10"><input type="checkbox" name="m61_declare" value="1"> Hasta sahipleri iletişim bilgilerini kliniğimizle iletişim kurulması amacıyla vermiştir; gönderilecek iletiler yalnızca bu klinikte temin edilen hizmetlere ilişkin değişiklik, kullanım ve bakım (aşı, kontrol, parazit) hatırlatmasıdır; tanıtım veya kampanya içermez. <span class="req" aria-hidden="true">*</span></label>
       <div class="help">Bu beyan, hatırlatma SMS'lerinin önceden onay ve İYS kontrolü gerektirmeden gönderilebilmesinin dayanağıdır (Yön. m.6/1, m.6/5, m.11/8). Kampanya/indirim içeren mesaj bu kapsama girmez ve sistem tarafından reddedilir.</div>
     <% } %>
   </div>
 
-  <div class="card">
-    <h2 class="mt0">SMS şablonu</h2>
+  <div class="card" id="sablon">
+    <h2 class="card-title">SMS şablonu</h2>
     <label for="template">Mesaj metni</label>
     <textarea id="template" name="template" maxlength="320" rows="4"><%= settings.template %></textarea>
     <div class="help">Kullanılabilir alanlar: {sahip} {hayvan} {tarih} {tur} {klinik} {klinik_tel}. Başa "Bilgilendirme:", sona kimlik ve iptal satırı sistemce eklenir; indirim, kampanya, ilaç adı ve teşhis ifadeleri kabul edilmez (veteriner hekim reklam yasağı, 6343 m.9; TVHB Uyg. Yön. m.97, m.68). Türkçe karakter kullanılırsa tek SMS 70 karakterdir; uzun mesaj birden çok SMS olarak ücretlendirilir.</div>
     <label>Önizleme <span id="template-len" class="muted small"></span></label>
-    <div id="template-preview" class="pre small preview-box" data-clinic="<%= settings.clinic_name %>" data-phone="<%= settings.clinic_phone %>" data-identity="<%= identityPreview %>" data-optout="<%= optOutPreview %>"></div>
+    <p class="mt0"><span id="template-parts" class="badge plain" aria-live="polite"></span></p>
+    <div id="template-preview" class="pre sms-bubble" data-clinic="<%= settings.clinic_name %>" data-phone="<%= settings.clinic_phone %>" data-identity="<%= identityPreview %>" data-optout="<%= optOutPreview %>"></div>
   </div>
 
-  <div class="card">
-    <h2 class="mt0">Otomatik gönderim</h2>
+  <div class="card" id="gonderim">
+    <h2 class="card-title">Otomatik gönderim</h2>
     <label class="checkbox"><input type="checkbox" name="scheduler_enabled" value="1" <%= settings.scheduler_enabled === '1' ? 'checked' : '' %>> Zamanlayıcı açık (hatırlatmalar otomatik gönderilsin)</label>
     <div class="form-grid">
       <div><label for="send_hour_start">Gönderim başlangıç saati</label><input id="send_hour_start" type="number" name="send_hour_start" inputmode="numeric" min="0" max="23" value="<%= settings.send_hour_start %>"></div>
@@ -62,8 +78,8 @@
     <div class="help">Türkiye saatine göre. Bu aralık dışında SMS gönderilmez, bir sonraki uygun saatte gönderilir.</div>
   </div>
 
-  <div class="card">
-    <h2 class="mt0">Saklama ve imha</h2>
+  <div class="card" id="saklama">
+    <h2 class="card-title">Saklama ve imha</h2>
     <div class="form-grid">
       <div><label for="retention_sms_days">SMS kayıtlarında kişisel bilgilerin saklama süresi (gün)</label>
         <input id="retention_sms_days" type="number" name="retention_sms_days" inputmode="numeric" min="1095" max="3650" value="<%= settings.retention_sms_days %>">
@@ -71,8 +87,8 @@
     </div>
   </div>
 
-  <div class="card">
-    <h2 class="mt0">SMS sağlayıcısı</h2>
+  <div class="card" id="saglayici">
+    <h2 class="card-title">SMS sağlayıcısı</h2>
     <% if (credentialsBroken) { %><div class="warnbox">Kayıtlı sağlayıcı hesap bilgileri çözülemiyor (sunucunun APP_SECRET değeri değişmiş). SMS gönderimi bu bilgiler yeniden girilene kadar başarısız olur.</div><% } %>
     <label for="sms_provider">Sağlayıcı</label>
     <select id="sms_provider" name="sms_provider">
@@ -84,7 +100,7 @@
 
     <% for (const [k, p] of Object.entries(providers)) { if (!p.fields.length) continue; %>
       <div class="provider-fields" data-provider="<%= k %>">
-      <h2><%= p.label %> hesap bilgileri <% if (hasCredentials && settings.sms_provider === k) { %><span class="badge ok">kayıtlı</span><% } %></h2>
+      <h3><%= p.label %> hesap bilgileri <% if (hasCredentials && settings.sms_provider === k) { %><span class="badge ok">kayıtlı</span><% } %></h3>
       <% for (const f of p.fields) { %>
         <label for="cred_<%= k %>_<%= f.key %>"><%= f.label %></label>
         <input id="cred_<%= k %>_<%= f.key %>" type="<%= f.type %>" name="cred_<%= k %>_<%= f.key %>" autocomplete="off" placeholder="<%= hasCredentials && settings.sms_provider === k ? '(değiştirmek için yazın)' : '' %>">
@@ -94,11 +110,11 @@
     <div class="help mt10">Hesap bilgileri sunucuda şifreli saklanır ve bir daha ekranda gösterilmez. Boş bırakırsanız mevcut kayıt korunur. Başlık onayı sağlayıcı panelinden alınır ve birkaç gün sürebilir.</div>
   </div>
 
-  <div class="form-actions"><button class="btn" type="submit">Kaydet</button></div>
+  <div class="savebar"><span class="small muted">Değişiklikler "Kaydet"e basınca uygulanır.</span><button class="btn" type="submit"><%- icon('check') %>Kaydet</button></div>
 </form>
 
-<div class="card mt24">
-  <h2 class="mt0">Test SMS gönder</h2>
+<div class="card mt24" id="test">
+  <h2 class="card-title">Test SMS gönder</h2>
   <form method="post" action="/ayarlar/test" class="row">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
     <input id="test_phone" type="tel" name="phone" inputmode="tel" autocomplete="off" enterkeyhint="send" aria-label="Test SMS için telefon numarası" placeholder="05xx xxx xx xx" required class="maxw220">
@@ -107,8 +123,8 @@
   <div class="help">Kayıtlı sağlayıcı ile "Test mesajı" gönderir; sonuç SMS geçmişine yazılır. Saatte en fazla 5 test.</div>
 </div>
 
-<div class="card mt24">
-  <h2 class="mt0">Hasta sahibi aydınlatma metni</h2>
+<div class="card" id="aydinlatma">
+  <h2 class="card-title">Hasta sahibi aydınlatma metni</h2>
   <% if (noticeUrl) { %>
     <p class="small">Kliniğinize özel, herkese açık aydınlatma metni: <a href="<%= noticeUrl %>" target="_blank" rel="noopener"><%= noticeUrl %></a></p>
     <div class="help">Bu bağlantıyı kayıt formunuza, bekleme salonuna (QR) ve web sitenize koyun. Metin, yukarıdaki KVKK başvuru bilgileri ve klinik adıyla otomatik doldurulur (KVKK m.10; Aydınlatma Tebliği m.4-5). Aydınlatmanın yapıldığını ispat yükü kliniktedir.</div>
@@ -117,11 +133,11 @@
   <% } %>
 </div>
 
-<div class="card mt24">
-  <h2 class="mt0">Sözleşmeler</h2>
+<div class="card" id="sozlesmeler">
+  <h2 class="card-title">Sözleşmeler</h2>
   <% if (acceptances.length) { %>
     <div class="table-wrap"><table class="cards">
-      <thead><tr><th>Belge</th><th>Sürüm</th><th>Kabul tarihi</th><th></th></tr></thead>
+      <thead><tr><th scope="col">Belge</th><th scope="col">Sürüm</th><th scope="col">Kabul tarihi</th><th scope="col"><span class="visually-hidden">Bağlantı</span></th></tr></thead>
       <tbody><% for (const a of acceptances) { %>
         <tr><td data-label="Belge"><%= a.title %></td><td data-label="Sürüm"><%= a.version %></td><td data-label="Kabul"><%= formatDateTime(a.accepted_at) %></td>
           <td><a href="/belgeler/<%= a.slug %>" target="_blank" rel="noopener">Görüntüle</a></td></tr>
@@ -130,8 +146,8 @@
   <% } else { %><div class="help">Henüz kabul edilmiş sözleşme yok.</div><% } %>
 </div>
 
-<div class="card mt24">
-  <h2 class="mt0">Erişim yetki matrisi</h2>
+<div class="card" id="yetki">
+  <h2 class="card-title">Erişim yetki matrisi</h2>
   <div class="help">Kişisel Veri Güvenliği Rehberi §3.1 uyarınca rollerin erişim yetkileri. Sistem yöneticisi (Teserix) hasta verisi ekranlarına giremez; yalnızca klinik açma/kapama, kullanıcı parolası sıfırlama ve denetim günlüğü yetkisine sahiptir.</div>
   <div class="table-wrap"><table class="cards small">
     <thead><tr><th>Veri</th><th>Klinik yöneticisi</th><th>Personel</th><th>Sistem yöneticisi</th></tr></thead>
@@ -146,5 +162,7 @@
       <tr><td data-label="Veri">Denetim günlüğü</td><td data-label="Yönetici">—</td><td data-label="Personel">—</td><td data-label="Sistem">oku</td></tr>
     </tbody>
   </table></div>
+</div>
+</div>
 </div>
 <%- include('partials/footer') %>

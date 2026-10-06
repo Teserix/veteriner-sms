@@ -1,42 +1,34 @@
 <%- include('partials/header') %>
-<h1>Hatırlatmalar</h1>
-<div class="tabs">
-  <a href="/hatirlatmalar" class="<%= !filter.status && !filter.range ? 'active' : '' %>">Tümü</a>
-  <a href="/hatirlatmalar?status=pending" class="<%= filter.status === 'pending' ? 'active' : '' %>">Bekleyen</a>
-  <a href="/hatirlatmalar?range=today" class="<%= filter.range === 'today' ? 'active' : '' %>">Bugün</a>
-  <a href="/hatirlatmalar?range=week" class="<%= filter.range === 'week' ? 'active' : '' %>">Bu hafta</a>
-  <a href="/hatirlatmalar?range=month" class="<%= filter.range === 'month' ? 'active' : '' %>">Bu ay</a>
-  <a href="/hatirlatmalar?status=sent" class="<%= filter.status === 'sent' ? 'active' : '' %>">SMS gönderilen</a>
-  <a href="/hatirlatmalar?status=failed" class="<%= filter.status === 'failed' ? 'active' : '' %>">Gönderilemeyen</a>
-  <a href="/hatirlatmalar?status=done" class="<%= filter.status === 'done' ? 'active' : '' %>">Tamamlanan</a>
+<%
+  const chips = [
+    ['/hatirlatmalar', 'Tümü', !filter.status && !filter.range],
+    ['/hatirlatmalar?status=pending', 'Bekleyen', filter.status === 'pending'],
+    ['/hatirlatmalar?range=today', 'Bugün', filter.range === 'today'],
+    ['/hatirlatmalar?range=week', 'Bu hafta', filter.range === 'week'],
+    ['/hatirlatmalar?range=month', 'Bu ay', filter.range === 'month'],
+    ['/hatirlatmalar?status=sent', 'SMS gönderilen', filter.status === 'sent'],
+    ['/hatirlatmalar?status=failed', 'Gönderilemeyen', filter.status === 'failed'],
+    ['/hatirlatmalar?status=done', 'Tamamlanan', filter.status === 'done'],
+  ];
+%>
+<div class="page-head">
+  <div>
+    <h1>Hatırlatmalar</h1>
+    <p class="sub"><%= list.length %> kayıt · randevu tarihine göre sıralı</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn" href="/hizli-kayit"><%- icon('zap') %>Hızlı kayıt</a>
+  </div>
 </div>
-<div class="card">
-  <p class="small muted">Yeni hatırlatma eklemek için hasta sahibi sayfasından ilgili hayvanın yanındaki "+ Hatırlatma" düğmesini kullanın.</p>
-  <% if (!list.length) { %><div class="empty">Kayıt yok.</div><% } else { %>
-  <table class="cards">
-    <thead><tr><th>Tarih</th><th>Sahip</th><th>Hayvan</th><th>Hatırlatma</th><th>Bildirim</th><th>Durum</th><th><span class="visually-hidden">İşlemler</span></th></tr></thead>
-    <tbody>
-    <% for (const r of list) { %>
-    <tr>
-      <td data-label="Tarih"><%= formatDate(r.due_date) %></td>
-      <td data-label="Sahip"><a href="/sahipler/<%= r.owner_id %>"><%= r.owner_name %></a><br><span class="small muted mono"><%= formatPhone(r.owner_phone) %></span></td>
-      <td data-label="Hayvan"><%= r.pet_name %></td>
-      <td data-label="Hatırlatma"><%= r.title %> <span class="small muted">(<%= REMINDER_TYPES[r.type] || r.type %>)</span></td>
-      <td class="small" data-label="Bildirim"><%= r.notify_days_before %> gün önce<% if (r.sent_at) { %><br><span class="muted"><%= formatDateTime(r.sent_at) %></span><% } %></td>
-      <td data-label="Durum"><span class="badge <%= r.status %>"><%= STATUS_LABELS[r.status] %></span><% if (r.last_error) { %><br><span class="small muted"><%= r.last_error %></span><% } %></td>
-      <td class="actions">
-        <% if (r.status === 'pending' || r.status === 'failed') { %>
-          <form method="post" action="/hatirlatmalar/<%= r.id %>/gonder"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn sm" type="submit">SMS gönder</button></form>
-        <% } %>
-        <% if (r.status !== 'done' && r.status !== 'cancelled') { %>
-          <form method="post" action="/hatirlatmalar/<%= r.id %>/durum"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="status" value="done"><button class="btn sm secondary" type="submit">Tamamlandı</button></form>
-        <% } %>
-        <a class="btn sm secondary" href="/hatirlatmalar/<%= r.id %>/duzenle">Düzenle</a>
-      </td>
-    </tr>
-    <% } %>
-    </tbody>
-  </table>
+<nav class="tabs" aria-label="Filtre">
+  <% for (const [href, label, on] of chips) { %><a href="<%= href %>" class="<%= on ? 'active' : '' %>"<%- on ? ' aria-current="true"' : '' %>><%= label %></a><% } %>
+</nav>
+<div class="card flush">
+  <% if (!list.length) { %>
+    <div class="empty-state"><span class="es-icon"><%- icon('inbox') %></span><span class="es-title">Kayıt yok.</span><span class="es-text">Bu filtrede hatırlatma bulunmuyor. Yeni hatırlatma için hasta sahibi sayfasında hayvanın yanındaki "+ Hatırlatma" düğmesini ya da Hızlı kayıt'ı kullanın.</span></div>
+  <% } else { %>
+    <div class="card-head"><p class="sub">Yeni hatırlatma eklemek için hasta sahibi sayfasından ilgili hayvanın yanındaki "+ Hatırlatma" düğmesini kullanın.</p></div>
+    <%- include('partials/reminder_list', { rows: list, actions: 'full' }) %>
   <% } %>
 </div>
 <%- include('partials/footer') %>

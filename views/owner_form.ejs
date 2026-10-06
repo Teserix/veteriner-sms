@@ -1,16 +1,17 @@
 <%- include('partials/header') %>
-<h1><%= owner ? 'Hasta sahibini düzenle' : 'Yeni hasta sahibi' %></h1>
-<div class="card">
-  <% if (error) { %><div class="flash err"><%= error %></div><% } %>
+<a class="back-link" href="<%= owner ? '/sahipler/' + owner.id : '/sahipler' %>"><%- icon('arrow-left') %><%= owner ? owner.name : 'Hasta sahipleri' %></a>
+<div class="page-head"><div><h1><%= owner ? 'Hasta sahibini düzenle' : 'Yeni hasta sahibi' %></h1><p class="sub">İletişim bilgileri ve SMS tercihi. Hayvanları kayıttan sonra ekleyebilirsiniz.</p></div></div>
+<div class="card form-card">
+  <% if (error) { %><div class="flash err" role="alert"><%- icon('alert') %><span><%= error %></span></div><% } %>
   <form method="post" action="<%= owner ? '/sahipler/' + owner.id + '/duzenle' : '/sahipler/yeni' %>">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
     <div class="form-grid">
       <div>
-        <label for="name">Ad Soyad *</label>
+        <label for="name">Ad Soyad <span class="req" aria-hidden="true">*</span></label>
         <input id="name" type="text" name="name" required maxlength="120" autocapitalize="words" autocomplete="off" enterkeyhint="next" value="<%= form.name || '' %>">
       </div>
       <div>
-        <label for="phone">Cep telefonu *</label>
+        <label for="phone">Cep telefonu <span class="req" aria-hidden="true">*</span></label>
         <input id="phone" type="tel" name="phone" required inputmode="tel" autocomplete="off" enterkeyhint="next" placeholder="05xx xxx xx xx" value="<%= form.phone || '' %>">
         <div class="help">SMS bu numaraya gider. 05xx ile başlayan Türkiye numarası.</div>
       </div>
@@ -35,7 +36,7 @@
     <div class="help">Dayanak: hasta sahibi iletişim bilgisini kliniğinizle iletişim kurulması için verdi; hatırlatmalar bu hizmete ilişkin bakım bilgilendirmesidir (Ticari İletişim Yön. m.6/1). Bu bir pazarlama onayı değildir. Her değişiklik tarih, kanal ve kullanıcıyla kaydedilir.</div>
     <div class="form-actions">
       <button class="btn" type="submit">Kaydet</button>
-      <a class="btn secondary" href="<%= owner ? '/sahipler/' + owner.id : '/sahipler' %>">Vazgeç</a>
+      <a class="btn ghost" href="<%= owner ? '/sahipler/' + owner.id : '/sahipler' %>">Vazgeç</a>
     </div>
   </form>
 </div>

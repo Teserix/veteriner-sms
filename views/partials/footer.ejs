@@ -1,13 +1,41 @@
+<%
+  const _fu = (typeof user !== 'undefined') ? user : null;
+  const _fv = (typeof assetV === 'string') ? assetV : '';
+  const _fi = (typeof icon === 'function') ? icon : () => '';
+  const _fp = (typeof currentPath === 'string') ? currentPath : '';
+  const _ftab = (p, label, ic, extra) => {
+    const on = _fp === p || !!(extra && extra.some((x) => _fp.startsWith(x)));
+    return `<a href="${p}" class="tab-link${on ? ' active' : ''}"${on ? ' aria-current="page"' : ''}>${_fi(ic)}<span>${label}</span></a>`;
+  };
+%>
 </main>
 <footer class="site-footer">
-  <a href="/belgeler/kullanim-kosullari">Kullanım koşulları</a> ·
-  <a href="/belgeler/abonelik-sozlesmesi">Abonelik sözleşmesi</a> ·
-  <a href="/belgeler/veri-isleyen-eki">Veri işleme eki</a> ·
-  <a href="/belgeler/aydinlatma-teserix">KVKK aydınlatma</a> ·
-  <a href="/belgeler/cerez">Çerez bildirimi</a> ·
-  <a href="/iletisim">İletişim</a>
+  <nav aria-label="Hukuki belgeler">
+    <a href="/belgeler/kullanim-kosullari">Kullanım koşulları</a>
+    <a href="/belgeler/abonelik-sozlesmesi">Abonelik sözleşmesi</a>
+    <a href="/belgeler/veri-isleyen-eki">Veri işleme eki</a>
+    <a href="/belgeler/aydinlatma-teserix">KVKK aydınlatma</a>
+    <a href="/belgeler/cerez">Çerez bildirimi</a>
+    <a href="/iletisim">İletişim</a>
+  </nav>
+  <div class="footer-brand">Veteriner SMS · Teserix</div>
 </footer>
-<script src="/static/app.js"></script>
+<% if (_fu) { %>
+  </div><!-- /.shell-main -->
+</div><!-- /.shell -->
+<% if (_fu.clinicId) { %>
+<nav class="tabbar" aria-label="Hızlı erişim">
+  <%- _ftab('/', 'Özet', 'home') %>
+  <%- _ftab('/hatirlatmalar', 'Hatırlatma', 'bell', ['/hatirlatmalar']) %>
+  <a href="/hizli-kayit" class="tab-link tab-cta<%= _fp === '/hizli-kayit' ? ' active' : '' %>"<%- _fp === '/hizli-kayit' ? ' aria-current="page"' : '' %>><%- _fi('plus') %><span>Kayıt</span></a>
+  <%- _ftab('/sahipler', 'Sahipler', 'users', ['/sahipler', '/hayvanlar']) %>
+  <button type="button" class="tab-link nav-toggle" aria-expanded="false" aria-controls="site-nav"><%- _fi('menu') %><span>Menü</span></button>
+</nav>
+<% } %>
+<% } else { %>
+</div><!-- /.public-shell -->
+<% } %>
+<script src="/static/app.js<%= _fv ? '?v=' + _fv : '' %>"></script>
 <script src="/static/pwa.js" defer></script>
 </body>
 </html>

@@ -1,14 +1,13 @@
 <%- include('partials/header') %>
-<h1>Sütunları eşleştir</h1>
-<p class="muted small"><strong><%= batch.filename %></strong> · <%= batch.rows.length %> satır, <%= batch.headers.length %> sütun · kodlama: <%= batch.encoding %> · ayraç: <%= batch.delimiter === '\t' ? 'sekme' : batch.delimiter %></p>
+<div class="page-head"><div><div class="eyebrow">Adım 2 / 3 · Eşleştirme</div><h1>Sütunları eşleştir</h1><p class="sub"><strong><%= batch.filename %></strong> · <%= batch.rows.length %> satır, <%= batch.headers.length %> sütun · kodlama: <%= batch.encoding %> · ayraç: <%= batch.delimiter === '\t' ? 'sekme' : batch.delimiter %></p></div></div>
 <div class="card">
-  <% if (error) { %><div class="flash err"><%= error %></div><% } %>
+  <% if (error) { %><div class="flash err" role="alert"><%- icon('alert') %><span><%= error %></span></div><% } %>
   <form method="post" action="/iceaktar/<%= token %>/eslestir">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
     <div class="form-grid">
       <% for (const [key, f] of Object.entries(fields)) { %>
       <div>
-        <label for="map_<%= key %>"><%= f.label %><%= f.required ? ' *' : '' %></label>
+        <label for="map_<%= key %>"><%= f.label %><% if (f.required) { %> <span class="req" aria-hidden="true">*</span><% } %></label>
         <select id="map_<%= key %>" name="map_<%= key %>">
           <option value="">— Kullanma —</option>
           <% batch.headers.forEach((h, i) => { %>
@@ -25,7 +24,7 @@
   </form>
 </div>
 <div class="card">
-  <h2 class="mt0">İlk <%= preview.length %> satır</h2>
+  <h2 class="card-title">İlk <%= preview.length %> satır</h2>
   <p class="small muted table-hint">Tabloyu yana kaydırarak tüm sütunları görebilirsiniz.</p>
   <div class="preview-box table-wrap">
     <table class="import-table">

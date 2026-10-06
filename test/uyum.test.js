@@ -165,7 +165,7 @@ test('ilgili kişi başvurusu: 30 günlük süre, nav sayacı, kapatma', async (
   assert.equal(list[0].due_at, '2026-10-01');
   assert.equal(list[0].status, 'acik');
   r = await c.get('/');
-  assert.ok(r.text.includes('KVKK başvuruları (1)'));
+  assert.match(r.text, /KVKK başvuruları<\/span><span class="nav-count" aria-label="1 açık">1<\/span>/);
   r = await c.post(`/basvurular/${list[0].id}/kapat`, { _csrf: csrf, status: 'kapali' });
   assert.equal(r.status, 302);
   assert.equal(subjectRequests.get(db, list[0].id).status, 'kapali');

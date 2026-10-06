@@ -1,20 +1,19 @@
 <%- include('partials/header') %>
-<h1>CSV içe aktar</h1>
-<p class="muted small">Mevcut hasta sahibi ve hayvan listenizi tek seferde aktarın. Yükledikten sonra sütunları eşleştirip önizlemeyi onaylayacaksınız; onaylamadan hiçbir kayıt yazılmaz.</p>
-<div class="card">
+<div class="page-head"><div><div class="eyebrow">Adım 1 / 3 · Dosya</div><h1>CSV içe aktar</h1><p class="sub">Mevcut hasta sahibi ve hayvan listenizi tek seferde aktarın. Yükledikten sonra sütunları eşleştirip önizlemeyi onaylayacaksınız; onaylamadan hiçbir kayıt yazılmaz.</p></div></div>
+<div class="card form-card">
   <form method="post" action="/iceaktar" enctype="multipart/form-data">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
-    <label for="file">CSV dosyası *</label>
+    <label for="file">CSV dosyası <span class="req" aria-hidden="true">*</span></label>
     <input id="file" type="file" name="file" accept=".csv,text/csv,text/plain" required>
     <p class="help">En fazla <%= maxMb %> MB, <%= limits.maxRows %> satır ve <%= limits.maxColumns %> sütun. Ayraç (; , sekme) ve karakter kodlaması (UTF-8 / Windows-1254) otomatik algılanır.</p>
     <div class="form-actions">
       <button class="btn" type="submit">Yükle ve devam et</button>
-      <a class="btn secondary" href="/sahipler">Vazgeç</a>
+      <a class="btn ghost" href="/sahipler">Vazgeç</a>
     </div>
   </form>
 </div>
-<div class="card">
-  <h2 class="mt0">Excel'den CSV nasıl kaydedilir?</h2>
+<div class="card form-card">
+  <h2 class="card-title">Excel'den CSV nasıl kaydedilir?</h2>
   <ol class="small">
     <li>İlk satırda sütun başlıkları olsun (örn. <code>Sahip Adı; Telefon; Hayvan Adı; Tür; Irk; Cinsiyet; Doğum Tarihi; E-posta</code>).</li>
     <li>Her satırda bir hayvan bulunsun; aynı sahibin birden çok hayvanı için telefonu tekrar yazın (aynı telefon tek sahipte birleştirilir).</li>

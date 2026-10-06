@@ -15,7 +15,7 @@
  * Önbellekte hiçbir zaman kişisel veri bulunmaz; yalnızca uygulama kabuğu.
  */
 
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const STATIC_CACHE = `vetsms-static-${CACHE_VERSION}`;
 const OFFLINE_URL = '/static/offline.html';
 
@@ -26,6 +26,7 @@ const SHELL_ASSETS = [
   '/static/pwa.js',
   OFFLINE_URL,
   '/static/icons/favicon.svg',
+  '/static/icons/sprite.svg',
   '/static/icons/icon-192.png',
   '/static/icons/icon-512.png',
   '/static/icons/maskable-512.png',

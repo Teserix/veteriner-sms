@@ -1,18 +1,22 @@
 <%- include('partials/header') %>
-<h1><%= reminder ? 'Hatırlatmayı düzenle' : 'Yeni hatırlatma' %> <span class="muted small">· <%= pet.name %> (<%= pet.owner_name %>)</span></h1>
-<div class="card">
-  <% if (error) { %><div class="flash err"><%= error %></div><% } %>
+<a class="back-link" href="/sahipler/<%= pet.owner_id %>"><%- icon('arrow-left') %><%= pet.owner_name %></a>
+<div class="page-head">
+  <div><h1><%= reminder ? 'Hatırlatmayı düzenle' : 'Yeni hatırlatma' %></h1><p class="sub"><%= pet.name %> · <%= pet.owner_name %><% if (reminder) { %> · <span class="badge <%= reminder.status %>"><%= STATUS_LABELS[reminder.status] %></span><% } %></p></div>
+</div>
+<div class="card form-card">
+  <% if (error) { %><div class="flash err" role="alert"><%- icon('alert') %><span><%= error %></span></div><% } %>
   <form method="post" action="<%= reminder ? '/hatirlatmalar/' + reminder.id + '/duzenle' : '/hayvanlar/' + pet.id + '/hatirlatma/yeni' %>">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <%- include('partials/presets') %>
     <div class="form-grid">
-      <div><label for="type">Tür *</label>
+      <div><label for="type">Tür <span class="req" aria-hidden="true">*</span></label>
         <select id="type" name="type">
           <% for (const [k, v] of Object.entries(REMINDER_TYPES)) { %><option value="<%= k %>" <%= (form.type || 'asi') === k ? 'selected' : '' %>><%= v %></option><% } %>
         </select></div>
-      <div><label for="title">Başlık *</label>
+      <div><label for="title">Başlık <span class="req" aria-hidden="true">*</span></label>
         <input id="title" type="text" name="title" required maxlength="80" autocapitalize="sentences" autocomplete="off" enterkeyhint="next" placeholder="örn. Kuduz aşısı" value="<%= form.title || '' %>">
         <div class="help">SMS'te {tur} yerine bu metin yazılır.</div></div>
-      <div><label for="due_date">Randevu / son tarih *</label><input id="due_date" type="date" name="due_date" required value="<%= form.due_date || '' %>"></div>
+      <div><label for="due_date">Randevu / son tarih <span class="req" aria-hidden="true">*</span></label><input id="due_date" type="date" name="due_date" required value="<%= form.due_date || '' %>"></div>
       <div><label for="notify_days_before">Kaç gün önce SMS gitsin</label>
         <input id="notify_days_before" type="number" name="notify_days_before" inputmode="numeric" min="0" max="60" value="<%= form.notify_days_before ?? 1 %>">
         <div class="help">0 = aynı gün</div></div>
@@ -24,11 +28,12 @@
     <textarea id="notes" name="notes" maxlength="500"><%= form.notes || '' %></textarea>
     <div class="form-actions">
       <button class="btn" type="submit">Kaydet</button>
-      <a class="btn secondary" href="/sahipler/<%= pet.owner_id %>">Vazgeç</a>
+      <a class="btn ghost" href="/sahipler/<%= pet.owner_id %>">Vazgeç</a>
     </div>
   </form>
   <% if (reminder) { %>
-  <div class="form-actions">
+  <hr>
+  <div class="form-actions mt0">
     <% if (reminder.status !== 'cancelled') { %>
     <form method="post" action="/hatirlatmalar/<%= reminder.id %>/durum" class="inline"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="status" value="cancelled"><button class="btn secondary" type="submit">İptal et</button></form>
     <% } %>

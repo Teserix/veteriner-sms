@@ -1,28 +1,36 @@
 <%- include('partials/header') %>
-<h1>Kullanıcılar</h1>
+<div class="page-head"><div><h1>Kullanıcılar</h1><p class="sub">Klinik personelinin hesapları ve rolleri</p></div>
+  <div class="page-actions"><a class="btn" href="#yeni"><%- icon('plus') %>Yeni kullanıcı</a></div>
+</div>
 <% if (tempPassword) { %>
-<div class="card tempbox">
+<div class="card tempbox" role="status">
   <strong><%= tempFor.name %></strong> (<%= tempFor.email %>) için geçici parola: <code class="mono big"><%= tempPassword %></code>
   <div class="help">Bu parola yalnızca şimdi görüntüleniyor. Kullanıcıya iletin; ilk girişte değiştirmesi istenecek.</div>
 </div>
 <% } %>
-<div class="card">
+<div class="card flush">
   <table class="cards">
-    <thead><tr><th>Ad</th><th>E-posta</th><th>Rol</th><th>Durum</th><th>Son giriş</th><th><span class="visually-hidden">İşlemler</span></th></tr></thead>
+    <thead><tr><th scope="col">Ad</th><th scope="col">E-posta</th><th scope="col">Rol</th><th scope="col">Durum</th><th scope="col">Son giriş</th><th scope="col"><span class="visually-hidden">İşlemler</span></th></tr></thead>
     <tbody>
     <% for (const u of list) { %>
     <tr>
-      <td data-label="Ad"><%= u.name %><% if (u.id === user.id) { %> <span class="small muted">(siz)</span><% } %><% if (u.must_change_password) { %><br><span class="small muted">parola değişimi bekliyor</span><% } %></td>
+      <td data-label="Ad"><span class="cell-title"><%= u.name %></span><% if (u.id === user.id) { %> <span class="small muted">(siz)</span><% } %><% if (u.must_change_password) { %><span class="cell-sub">parola değişimi bekliyor</span><% } %></td>
       <td data-label="E-posta"><%= u.email %></td>
       <td data-label="Rol"><%= u.role === 'admin' ? 'Yönetici' : 'Personel' %></td>
       <td data-label="Durum"><% if (u.active) { %><span class="badge ok">Aktif</span><% } else { %><span class="badge cancelled">Pasif</span><% } %></td>
-      <td class="small" data-label="Son giriş"><%= formatDateTime(u.last_login_at) || '—' %></td>
+      <td class="small tnum" data-label="Son giriş"><%= formatDateTime(u.last_login_at) || '—' %></td>
       <td class="actions">
         <% if (u.id !== user.id) { %>
-          <form method="post" action="/kullanicilar/<%= u.id %>/sifre-sifirla" data-confirm="Geçici parola üretilsin mi? Kullanıcının mevcut oturumları kapanır."><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn sm secondary" type="submit">Parola sıfırla</button></form>
-          <form method="post" action="/kullanicilar/<%= u.id %>/durum"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="active" value="<%= u.active ? 0 : 1 %>"><button class="btn sm secondary" type="submit"><%= u.active ? 'Pasifleştir' : 'Aktifleştir' %></button></form>
-          <form method="post" action="/kullanicilar/<%= u.id %>/rol"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="role" value="<%= u.role === 'admin' ? 'staff' : 'admin' %>"><button class="btn sm secondary" type="submit"><%= u.role === 'admin' ? 'Personel yap' : 'Yönetici yap' %></button></form>
-          <form method="post" action="/kullanicilar/<%= u.id %>/sil" data-confirm="Kullanıcı silinsin mi?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn sm danger" type="submit">Sil</button></form>
+          <form method="post" action="/kullanicilar/<%= u.id %>/sifre-sifirla" data-confirm="Geçici parola üretilsin mi? Kullanıcının mevcut oturumları kapanır."><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn sm secondary" type="submit"><%- icon('key') %>Parola sıfırla</button></form>
+          <details class="menu">
+            <summary class="btn sm secondary icon-only" aria-label="<%= u.name %> için diğer işlemler" title="Diğer işlemler"><%- icon('more') %></summary>
+            <div class="menu-panel">
+              <form method="post" action="/kullanicilar/<%= u.id %>/durum"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="active" value="<%= u.active ? 0 : 1 %>"><button class="menu-item" type="submit"><%- icon(u.active ? 'ban' : 'check-circle') %><%= u.active ? 'Pasifleştir' : 'Aktifleştir' %></button></form>
+              <form method="post" action="/kullanicilar/<%= u.id %>/rol"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="role" value="<%= u.role === 'admin' ? 'staff' : 'admin' %>"><button class="menu-item" type="submit"><%- icon('user-check') %><%= u.role === 'admin' ? 'Personel yap' : 'Yönetici yap' %></button></form>
+              <div class="menu-sep" role="separator"></div>
+              <form method="post" action="/kullanicilar/<%= u.id %>/sil" data-confirm="<%= u.name %> silinsin mi?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="menu-item danger" type="submit"><%- icon('trash') %>Sil</button></form>
+            </div>
+          </details>
         <% } %>
       </td>
     </tr>
@@ -31,22 +39,23 @@
   </table>
 </div>
 
-<h2>Yeni kullanıcı</h2>
-<div class="card">
-  <% if (error) { %><div class="flash err"><%= error %></div><% } %>
+<div class="card form-card" id="yeni">
+  <h2 class="card-title">Yeni kullanıcı</h2>
+  <p class="card-desc">Personel hasta kayıtlarını ve hatırlatmaları yönetir; yönetici ayrıca ayarlara, içe aktarmaya ve kullanıcılara erişir.</p>
+  <% if (error) { %><div class="flash err" role="alert"><%- icon('alert') %><span><%= error %></span></div><% } %>
   <form method="post" action="/kullanicilar">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
     <div class="form-grid">
-      <div><label for="name">Ad Soyad *</label><input id="name" type="text" name="name" required maxlength="80" autocapitalize="words" autocomplete="off" value="<%= form.name || '' %>"></div>
-      <div><label for="email">E-posta *</label><input id="email" type="email" name="email" required maxlength="120" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" value="<%= form.email || '' %>"></div>
-      <div><label for="password">Geçici parola *</label><input id="password" type="password" name="password" required autocomplete="new-password"><div class="help">En az 8 karakter, harf ve rakam. Kullanıcı ilk girişte değiştirir.</div></div>
+      <div><label for="name">Ad Soyad <span class="req" aria-hidden="true">*</span></label><input id="name" type="text" name="name" required maxlength="80" autocapitalize="words" autocomplete="off" value="<%= form.name || '' %>"></div>
+      <div><label for="email">E-posta <span class="req" aria-hidden="true">*</span></label><input id="email" type="email" name="email" required maxlength="120" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" value="<%= form.email || '' %>"></div>
+      <div><label for="password">Geçici parola <span class="req" aria-hidden="true">*</span></label><input id="password" type="password" name="password" required autocomplete="new-password"><div class="help">En az 8 karakter, harf ve rakam. Kullanıcı ilk girişte değiştirir.</div></div>
       <div><label for="role">Rol</label>
         <select id="role" name="role">
           <option value="staff" <%= form.role !== 'admin' ? 'selected' : '' %>>Personel</option>
           <option value="admin" <%= form.role === 'admin' ? 'selected' : '' %>>Yönetici</option>
         </select></div>
     </div>
-    <div class="form-actions"><button class="btn" type="submit">Kullanıcı ekle</button></div>
+    <div class="form-actions"><button class="btn" type="submit"><%- icon('plus') %>Kullanıcı ekle</button></div>
   </form>
 </div>
 <%- include('partials/footer') %>

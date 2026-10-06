@@ -1,7 +1,10 @@
 <%- include('partials/header') %>
-<h1><%= title %></h1>
-<div class="card">
-  <p><%= message %></p>
-  <a class="btn secondary" href="/">Ana sayfa</a>
+<div class="card narrow">
+  <div class="empty-state">
+    <span class="es-icon"><%- icon('alert') %></span>
+    <h1 class="es-title"><%= title %></h1>
+    <p class="es-text"><%= message %></p>
+    <a class="btn secondary" href="/"><%- icon('arrow-left') %>Ana sayfa</a>
+  </div>
 </div>
 <%- include('partials/footer') %>

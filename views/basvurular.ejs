@@ -1,24 +1,26 @@
 <%- include('partials/header') %>
-<h1>KVKK ilgili kişi başvuruları</h1>
-<div class="card">
+<div class="page-head"><div><h1>KVKK ilgili kişi başvuruları</h1><p class="sub">Hasta sahiplerinin kişisel veri talepleri ve 30 günlük yanıt süresi</p></div></div>
+<div class="card form-card">
+  <h2 class="card-title">Yeni başvuru kaydet</h2>
   <div class="help">Hasta sahibi kişisel verileriyle ilgili başvurduğunda burada kaydedin. Başvurular en geç <strong>30 gün</strong> içinde ücretsiz sonuçlandırılmalıdır (KVKK m.13/2; Veri Sorumlusuna Başvuru Usul ve Esasları Hakkında Tebliğ m.6/5). Erişim talebi için hasta sahibi sayfasındaki "Veri (JSON/CSV)" düğmesini, silme talebi için "Anonimleştir" ya da "Sil" düğmesini kullanın.</div>
   <form method="post" action="/basvurular" class="mt10">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
     <div class="form-grid">
-      <div><label for="applicant_name">Başvuran ad soyad *</label><input id="applicant_name" type="text" name="applicant_name" required maxlength="120" autocomplete="off"></div>
+      <div><label for="applicant_name">Başvuran ad soyad <span class="req" aria-hidden="true">*</span></label><input id="applicant_name" type="text" name="applicant_name" required maxlength="120" autocomplete="off"></div>
       <div><label for="applicant_phone">Telefon</label><input id="applicant_phone" type="tel" name="applicant_phone" inputmode="tel" autocomplete="off" placeholder="05xx xxx xx xx"></div>
       <div><label for="owner_id">Hasta sahibi kayıt no</label><input id="owner_id" type="number" name="owner_id" inputmode="numeric" min="1" placeholder="sahip sayfasındaki numara"></div>
-      <div><label for="kind">Talep türü *</label><select id="kind" name="kind"><% for (const [k, v] of Object.entries(kinds)) { %><option value="<%= k %>"><%= v %></option><% } %></select></div>
-      <div><label for="channel">Başvuru kanalı *</label><select id="channel" name="channel"><% for (const [k, v] of Object.entries(channels)) { %><option value="<%= k %>"><%= v %></option><% } %></select></div>
-      <div><label for="received_at">Alınma tarihi *</label><input id="received_at" type="date" name="received_at" required value="<%= form.received_at %>"></div>
+      <div><label for="kind">Talep türü <span class="req" aria-hidden="true">*</span></label><select id="kind" name="kind"><% for (const [k, v] of Object.entries(kinds)) { %><option value="<%= k %>"><%= v %></option><% } %></select></div>
+      <div><label for="channel">Başvuru kanalı <span class="req" aria-hidden="true">*</span></label><select id="channel" name="channel"><% for (const [k, v] of Object.entries(channels)) { %><option value="<%= k %>"><%= v %></option><% } %></select></div>
+      <div><label for="received_at">Alınma tarihi <span class="req" aria-hidden="true">*</span></label><input id="received_at" type="date" name="received_at" required value="<%= form.received_at %>"></div>
     </div>
     <label for="note">Not</label><textarea id="note" name="note" maxlength="1000" rows="2"></textarea>
     <div class="form-actions"><button class="btn" type="submit">Başvuruyu kaydet</button></div>
   </form>
 </div>
-<div class="card">
-  <% if (!list.length) { %><div class="empty">Kayıtlı başvuru yok.</div><% } else { %>
-  <div class="table-wrap"><table class="cards">
+<div class="card flush">
+  <div class="card-head"><h2 class="section-title">Başvurular <span class="count-pill"><%= list.length %></span></h2></div>
+  <% if (!list.length) { %><div class="empty-state compact"><span class="es-icon"><%- icon('shield') %></span><span class="es-text">Kayıtlı başvuru yok.</span></div><% } else { %>
+  <div><table class="cards">
     <thead><tr><th>Alındı</th><th>Son yanıt</th><th>Başvuran</th><th>Talep</th><th>Kanal</th><th>Durum</th><th><span class="visually-hidden">İşlem</span></th></tr></thead>
     <tbody><% for (const r of list) { %>
       <tr>
