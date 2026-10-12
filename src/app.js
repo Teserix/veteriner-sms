@@ -27,7 +27,7 @@ const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 /** Statik varlıkların içerik özeti: sürüm değişince tarayıcı ve service worker önbelleği eski CSS/JS'i kullanmaz */
 const ASSET_VERSION = (() => {
   const h = crypto.createHash('sha256');
-  for (const f of ['style.css', 'app.js', 'icons/sprite.svg']) {
+  for (const f of ['style.css', 'app.js', 'tour.js', 'icons/sprite.svg']) {
     try { h.update(fs.readFileSync(path.join(PUBLIC_DIR, f))); } catch { /* yoksa atla */ }
   }
   return h.digest('hex').slice(0, 10);
