@@ -1,6 +1,6 @@
 <%
   // Kullanım: include('partials/reminder_list', { rows, actions: 'send' | 'full' | 'none', showOwner: true })
-  //   send: yalnızca "Şimdi gönder" (özet)   full: gönder + tamamlandı + düzenle   none: salt okunur
+  //   send: yalnızca "Şimdi gönder" (özet; gönderim önizleme ekranından yapılır)   full: gönder + tamamlandı + düzenle   none: salt okunur
   const _rows = rows || [];
   const _actions = (typeof actions === 'string') ? actions : 'none';
   const _showOwner = (typeof showOwner === 'boolean') ? showOwner : true;
@@ -33,7 +33,7 @@
       <% if (_actions !== 'none') { %>
       <span class="actions">
         <% if (canSend) { %>
-        <form method="post" action="/hatirlatmalar/<%= r.id %>/gonder" data-confirm="<%= r.owner_name %> (<%= formatPhone(r.owner_phone) %>) numarasına &quot;<%= r.title %>&quot; hatırlatma SMS'i şimdi gönderilsin mi?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn sm secondary" type="submit"><%- icon('send') %><%= _actions === 'send' ? 'Şimdi gönder' : 'SMS gönder' %></button></form>
+        <a class="btn sm secondary" href="/hatirlatmalar/<%= r.id %>/onizle" aria-label="SMS önizle ve gönder: <%= r.pet_name %> – <%= r.title %>"><%- icon('send') %><%= _actions === 'send' ? 'Şimdi gönder' : 'SMS gönder' %></a>
         <% } %>
         <% if (_actions === 'full' && open) { %>
         <form method="post" action="/hatirlatmalar/<%= r.id %>/durum"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="status" value="done"><button class="btn sm secondary" type="submit"><%- icon('check') %>Tamamlandı</button></form>

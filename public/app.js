@@ -6,21 +6,42 @@ document.addEventListener('submit', function (e) {
   }
 });
 
-// SMS parça hesabı: GSM 03.38 temel alfabesi dışında tek karakter (ç, ğ, ı, ş, İ...) varsa mesaj UCS-2 kodlanır
-var GSM7 = '@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&\'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà';
+// SMS-SAYAC-BASLA
+// SMS parça hesabı: src/sms/policy.js smsSegments ile birebir aynı (test/sms-counter-parity.test.js doğrular).
+// GSM 03.38 temel + genişletme tablosu; Türkçe kaydırma tablosu yok. Temel tabloda olmayan tek karakter
+// (ş, ğ, ı, İ...) bütün mesajı UCS-2'ye geçirir (70/67); genişletme karakterleri GSM-7'de 2 birimdir.
+var SMS_LIMITS = { gsm7: { single: 160, multi: 153 }, ucs2: { single: 70, multi: 67 } };
+var GSM7_BASIC = '@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&\'()*+,-./0123456789:;<=>?' +
+  '¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà';
 var GSM7_EXT = '^{}\\[~]|€';
-function smsParts(text) {
-  var unicode = false; var units = 0;
-  for (var i = 0; i < text.length; i++) {
-    var ch = text.charAt(i);
-    if (GSM7.indexOf(ch) !== -1) units += 1;
-    else if (GSM7_EXT.indexOf(ch) !== -1) units += 2;
-    else { unicode = true; break; }
+function smsSegments(text) {
+  var s = String(text == null ? '' : text);
+  var gsmUnits = 0;
+  var encoding = 'gsm7';
+  // UTF-16 birimi bazında dolaşılır; tablolarda vekil (surrogate) yok, bu yüzden policy.js'teki for...of ile aynı sonuç
+  for (var i = 0; i < s.length; i++) {
+    var ch = s.charAt(i);
+    if (GSM7_BASIC.indexOf(ch) !== -1) gsmUnits += 1;
+    else if (GSM7_EXT.indexOf(ch) !== -1) gsmUnits += 2;
+    else { encoding = 'ucs2'; break; }
   }
-  if (unicode) units = text.length;
-  var single = unicode ? 70 : 160; var multi = unicode ? 67 : 153;
-  var parts = units === 0 ? 0 : (units <= single ? 1 : Math.ceil(units / multi));
-  return { unicode: unicode, units: units, parts: parts };
+  var units = encoding === 'gsm7' ? gsmUnits : s.length;
+  var single = SMS_LIMITS[encoding].single;
+  var multi = SMS_LIMITS[encoding].multi;
+  var segments = units === 0 ? 0 : (units <= single ? 1 : Math.ceil(units / multi));
+  var perSegment = segments > 1 ? multi : single;
+  var remainingInSegment = segments === 0 ? single : segments * perSegment - units;
+  return { encoding: encoding, units: units, segments: segments, perSegment: perSegment, remainingInSegment: remainingInSegment };
+}
+// SMS-SAYAC-BITIS
+
+// Gövde, policy.composeMessage gibi normalize edilir: boşluk dizileri tek boşluk, baş/son boşluk atılır
+function smsNormalizeBody(body) { return String(body || '').replace(/\s+/g, ' ').trim(); }
+
+// Önizleme ekranındaki sayaç metni (views/reminder_preview.ejs ilk değeriyle aynı biçim)
+function smsCounterText(full, seg) {
+  return full.length + ' karakter · ' + seg.segments + ' SMS parçası · ' +
+    (seg.encoding === 'gsm7' ? 'GSM-7' : 'Türkçe (UCS-2)') + ' · parçada kalan ' + seg.remainingInSegment;
 }
 
 (function () {
@@ -39,14 +60,63 @@ function smsParts(text) {
     var body = ta.value.replace(/\{(\w+)\}/g, function (m, k) { return sample[k] != null ? sample[k] : m; }).replace(/\s+/g, ' ').trim();
     var t = 'Bilgilendirme: ' + body + (tail ? ' ' + tail : '');
     out.textContent = t;
-    var p = smsParts(t);
+    var p = smsSegments(t);
     if (len) len.textContent = t.length + ' karakter (kuyruk dahil)';
     if (meter) {
-      meter.textContent = p.parts + ' SMS' + (p.unicode ? ' · Türkçe karakter var (SMS başına 70/67 karakter)' : ' · SMS başına 160/153 karakter');
-      meter.className = 'badge plain ' + (p.parts >= 3 ? 'failed' : (p.parts === 2 ? 'pending' : 'ok'));
+      meter.textContent = p.segments + ' SMS' + (p.encoding === 'ucs2' ? ' · Türkçe karakter var (SMS başına 70/67 karakter)' : ' · SMS başına 160/153 karakter');
+      meter.className = 'badge plain ' + (p.segments >= 3 ? 'failed' : (p.segments === 2 ? 'pending' : 'ok'));
     }
   }
   ta.addEventListener('input', render);
+  render();
+})();
+
+// SMS önizleme ekranı: canlı tam metin, karakter/parça sayacı, "Orijinale dön". Sunucu her durumda yeniden doğrular.
+(function () {
+  var ta = document.querySelector('[data-sms-body]');
+  if (!ta) return;
+  var form = ta.form;
+  var counter = document.querySelector('[data-sms-counter]');
+  var full = document.querySelector('.sms-full');
+  var reset = document.querySelector('[data-sms-reset]');
+  var submit = form ? form.querySelector('button[type="submit"]') : null;
+  // Sunucu engel nedeniyle düğmeyi kapattıysa (kimlik eksik, SMS izni yok...) istemci asla açmaz
+  var lockedByServer = submit ? submit.disabled : true;
+  var prefix = ta.getAttribute('data-prefix') || '';
+  var tail = ta.getAttribute('data-tail') || '';
+  var maxTotal = parseInt(ta.getAttribute('data-max-total'), 10) || 0;
+  var maxBody = parseInt(ta.getAttribute('maxlength'), 10) || 0;
+  var original = ta.getAttribute('data-original') || '';
+
+  function render() {
+    var body = smsNormalizeBody(ta.value);
+    var text = prefix + body + tail;
+    var seg = smsSegments(text);
+    var over = (maxTotal && text.length > maxTotal) || (maxBody && body.length > maxBody);
+    var empty = body === '';
+    if (full) full.textContent = text;
+    if (counter) {
+      counter.textContent = smsCounterText(text, seg) +
+        (over ? ' · Sınır aşıldı, gövdeyi kısaltın' : (empty ? ' · Gövde boş olamaz' : ''));
+      counter.classList.toggle('is-over', !!(over || empty));
+      counter.classList.toggle('is-multi', !over && !empty && seg.segments > 1);
+    }
+    ta.classList.toggle('is-invalid', !!(over || empty));
+    ta.setAttribute('aria-invalid', over || empty ? 'true' : 'false');
+    if (submit && !lockedByServer) submit.disabled = !!(over || empty);
+    if (reset) reset.disabled = smsNormalizeBody(ta.value) === smsNormalizeBody(original);
+  }
+
+  ta.addEventListener('input', render);
+  if (reset) {
+    reset.addEventListener('click', function (e) {
+      // JS yokken düğme formu ilk değerine döndürür; JS ile her zaman şablondaki orijinal gövde geri gelir
+      e.preventDefault();
+      ta.value = original;
+      render();
+      ta.focus();
+    });
+  }
   render();
 })();
 
