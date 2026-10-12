@@ -764,6 +764,61 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; }
   table.cards tr { grid-template-columns: 1fr; }
 }
 
+/* ---------- SMS önizleme ve gövde düzenleme (views/reminder_preview.ejs) ---------- */
+.sms-preview { max-width: 720px; }
+.sms-editor {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--gray-25);
+}
+.sms-editor label { margin: 4px 0 0; }
+.sms-label-note { font-weight: 500; color: var(--muted); font-size: var(--fs-sm); margin-left: 4px; }
+.sms-editor textarea { margin: 0; resize: vertical; min-height: 112px; background: #fff; }
+.sms-editor textarea.is-invalid { border-color: var(--err-fg); }
+.sms-editor textarea.is-invalid:focus { box-shadow: 0 0 0 3px rgba(180, 35, 24, .2); }
+.sms-editor .help { margin: 0; }
+
+/* kilitli (sistemce eklenen) satırlar: düzenlenemez, kopyalanabilir */
+.sms-fixed {
+  display: flex; align-items: flex-start; gap: 8px; margin: 0;
+  padding: 8px 12px; border: 1px dashed var(--line-strong); border-radius: var(--radius-sm);
+  background: var(--gray-100); color: var(--gray-700); font-size: 14px; overflow-wrap: anywhere;
+}
+.sms-fixed > span:not(.sms-fixed-tag) { flex: 1 1 auto; min-width: 0; }
+.sms-fixed .sms-lock { width: 16px; height: 16px; flex: 0 0 auto; margin-top: 2px; color: var(--gray-500); }
+.sms-fixed-tag {
+  flex: 0 0 auto; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--gray-500); padding: 1px 6px; border: 1px solid var(--line-strong); border-radius: 999px; background: #fff;
+}
+.sms-fixed.is-missing { background: var(--err-bg); border-color: var(--err-line); color: #7a271a; }
+.sms-fixed.is-missing .sms-lock { color: var(--err-fg); }
+
+/* sayaç */
+.sms-counter-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; }
+.sms-counter {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+  font-size: var(--fs-sm); font-weight: 600; font-variant-numeric: tabular-nums;
+  background: var(--ok-bg); color: var(--ok-fg); border: 1px solid var(--ok-line);
+}
+.sms-counter.is-multi { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-line); }
+.sms-counter.is-over { background: var(--err-bg); color: var(--err-fg); border-color: var(--err-line); }
+.sms-counter-max { font-size: var(--fs-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* gönderilecek tam metin: telefon balonu */
+.sms-full-wrap { margin-top: 20px; }
+.sms-full-wrap h2 { font-size: 15px; margin: 0 0 8px; }
+.sms-full {
+  margin: 0; max-width: 46ch; padding: 12px 14px;
+  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-lg) var(--radius-sm);
+  background: var(--brand-50); border: 1px solid var(--brand-100); color: var(--gray-900);
+  font-size: 15px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .sms-editor { padding: 12px; }
+  .sms-full { max-width: none; }
+  .sms-preview .form-actions .btn { flex: 1 1 auto; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
