@@ -29,7 +29,8 @@
       </div>
     </div>
     <div class="rside">
-      <% if (!r.sms_opt_in && open) { %><span class="badge cancelled">SMS istemiyor</span><% } else if (r.last_error && r.status !== 'failed') { %><span class="badge failed" title="<%= r.last_error %>">Hata (<%= r.attempts %>)</span><% } else { %><span class="badge <%= r.status %>"><%= STATUS_LABELS[r.status] %></span><% } %>
+      <% if (!r.sms_opt_in && open) { %><span class="badge cancelled">SMS istemiyor</span><% } else if (r.last_error && r.status !== 'failed') { %><span class="badge failed" title="<%= r.last_error %>">Hata (<%= r.attempts %>)</span><% } else if (r.status !== 'pending') { %><span class="badge <%= r.status %>"><%= STATUS_LABELS[r.status] %></span><% } %>
+      <%# 'Bekliyor' varsayılan durumdur; rozet yalnız istisnalarda (hata, gönderildi, iptal…) gösterilir. %>
       <% if (_actions !== 'none') { %>
       <span class="actions">
         <% if (canSend) { %>

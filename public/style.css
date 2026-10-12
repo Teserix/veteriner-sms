@@ -158,7 +158,7 @@ main:focus { outline: none; }
 .nav-link.active { background: var(--gray-200); color: var(--gray-900); font-weight: 600; }
 .nav-link.active .icon { color: var(--accent); }
 .nav-label { flex: 1 1 auto; min-width: 0; }
-.nav-count { min-width: 22px; height: 22px; padding: 0 7px; border-radius: 999px; background: var(--warn-bg); color: var(--warn-fg); border: 1px solid var(--warn-line); font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.nav-count { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--gray-100); color: var(--gray-700); border: 1px solid var(--gray-200); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
 .sidebar-foot { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
 .me { display: flex; align-items: center; gap: 10px; padding: 4px 6px 8px; min-width: 0; }
 .avatar { width: 36px; height: 36px; border-radius: 50%; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; background: var(--brand-100); color: var(--brand-800); font-weight: 700; font-size: 13px; letter-spacing: .02em; }
@@ -236,8 +236,9 @@ main {
 .card-note { font-size: var(--fs-sm); color: var(--muted); }
 .section-title { display: flex; align-items: center; gap: 8px; font-size: var(--fs-md); font-weight: 650; margin: 0; }
 .count-pill { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 4px; background: var(--gray-100); color: var(--gray-600); font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
-.count-pill.warn { color: var(--warn-fg); }
-.count-pill.err { color: var(--err-fg); }
+/* sayılar nötr kalır; renk yalnız gerçek sorunda (Gönderilemeyenler) */
+.count-pill.brand, .count-pill.warn { color: var(--gray-600); }
+.count-pill.err { background: var(--err-bg); color: var(--err-fg); }
 
 /* ızgaralar */
 .grid { display: grid; gap: 16px; }
@@ -316,7 +317,7 @@ a.stat-item:hover { background: var(--gray-50); text-decoration: none; color: in
 .btn.icon-only { padding: 0; width: 40px; }
 .btn.sm.icon-only { width: 34px; }
 .btn.icon-only .icon { margin: 0; }
-.btn[disabled], .btn.disabled { opacity: .5; pointer-events: none; }
+.btn[disabled], .btn.disabled, .btn.is-disabled { opacity: .5; pointer-events: none; }
 .link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--brand-700); cursor: pointer; }
 .link-btn:hover { text-decoration: underline; }
 summary.btn, summary.link-btn { list-style: none; cursor: pointer; }
@@ -378,6 +379,23 @@ details[open] > summary.btn { background: var(--gray-100); }
 .alert a, .flash a, .warnbox a { color: inherit; text-decoration: underline; font-weight: 600; }
 .alert > div { min-width: 0; }
 .alert ul, .warnbox ul { margin: 8px 0 0; padding-left: 20px; }
+
+/* PWA kurulum ipucu: nötr, ince, kapatılabilir tek satır (public/pwa.js) */
+.pwa-install-line {
+  display: flex; align-items: center; gap: 4px 8px; flex-wrap: wrap;
+  margin: 0 0 16px; padding: 0 0 0 12px; min-width: 0;
+  background: var(--gray-50); color: var(--gray-600); border: 1px solid var(--gray-200);
+  border-radius: var(--radius); font-size: 13px; line-height: 1.4;
+}
+.pwa-install-line .pwa-text { flex: 1 1 12em; min-width: 0; padding: 6px 0; overflow-wrap: anywhere; }
+.pwa-install-line button {
+  min-height: 44px; padding: 0 10px; border: 0; background: transparent; cursor: pointer;
+  font: inherit; color: var(--gray-700); border-radius: var(--radius);
+}
+.pwa-install-line .pwa-action { font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.pwa-install-line .pwa-close { min-width: 44px; font-size: 18px; line-height: 1; color: var(--gray-600); }
+.pwa-install-line button:hover { background: var(--gray-100); color: var(--gray-900); }
+.pwa-install-line button:focus-visible { outline: 2px solid var(--gray-700); outline-offset: -2px; }
 
 /* tablolar */
 table { width: 100%; border-collapse: collapse; font-size: 14px; }

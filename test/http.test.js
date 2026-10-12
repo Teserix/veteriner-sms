@@ -148,6 +148,54 @@ test('ek) CSV dışa aktarma (yönetici): BOM, başlık ve sahip satırı', asyn
   assert.ok(lines[2].startsWith('Mehmet Kaya;0532 123 45 67;;;Evet;Zeytin;Köpek;'));
 });
 
+test('ek) sade rozetler: Bekliyor rozeti yok, istisnalar renkli, 7 gün listesinde rozet yok', async () => {
+  const { openTenant } = await import('../src/db/tenant.js');
+  const today = todayLocal();
+  const in3 = new Date(Date.parse(today + 'T00:00:00Z') + 3 * 86400000).toISOString().slice(0, 10);
+  let r = await c.post('/hizli-kayit', { _csrf: csrf, owner_name: 'Ali Demir', phone: '0533 765 43 21', pet_name: 'Karabaş', species: 'Köpek', add_reminder: '1', type: 'asi', title: 'Karma aşı', due_date: today, notify_days_before: '0', sms_opt_in: '1' });
+  assert.equal(r.status, 302);
+  r = await c.post('/hizli-kayit', { _csrf: csrf, owner_name: 'Ali Demir', phone: '05337654321', pet_name: 'Pamuk', species: 'Kedi', add_reminder: '1', type: 'asi', title: 'İç parazit', due_date: in3, notify_days_before: '0', sms_opt_in: '1' });
+  assert.equal(r.status, 302);
+  const db = openTenant(clinicId);
+  const failedRow = db.prepare("SELECT r.id, p.owner_id FROM reminders r JOIN pets p ON p.id = r.pet_id WHERE r.title = 'Karma aşı'").get();
+  db.prepare("UPDATE reminders SET status = 'failed', attempts = 3, last_error = 'test hatası' WHERE id = ?").run(failedRow.id);
+  try {
+    // (a) bekleyen hatırlatma: sahip detayında ve ana sayfada 'Bekliyor' rozeti basılmaz
+    r = await c.get('/sahipler/1');
+    assert.ok(r.text.includes('Kuduz aşısı'));
+    assert.ok(!r.text.includes('class="badge pending"'));
+    r = await c.get('/');
+    assert.ok(!r.text.includes('class="badge pending"'));
+    // (b) istisna durum renkli kalır
+    assert.ok(r.text.includes('badge failed'));
+    r = await c.get('/sahipler/' + failedRow.owner_id);
+    assert.ok(r.text.includes('badge failed'));
+    // (c) 'Önümüzdeki 7 gün' bölümünde durum rozeti yok
+    r = await c.get('/');
+    const week = r.text.slice(r.text.indexOf('id="h-hafta"'), r.text.indexOf('</section>', r.text.indexOf('id="h-hafta"')));
+    assert.ok(week.includes('Pamuk'), 'yaklaşan hatırlatma listede');
+    assert.ok(!week.includes('class="badge'));
+    // sayı rozeti 0 iken gösterilmez (yarın listesi boş)
+    const tomorrowHead = r.text.slice(r.text.indexOf('id="h-yarin"'), r.text.indexOf('</h2>', r.text.indexOf('id="h-yarin"')));
+    assert.ok(!tomorrowHead.includes('count-pill'));
+  } finally {
+    db.prepare("UPDATE reminders SET status = 'done' WHERE pet_id IN (SELECT id FROM pets WHERE owner_id = ?)").run(failedRow.owner_id);
+  }
+});
+
+test('ek) PWA kurulum satırı: nötr metin düğmesi ve erişilebilir kapat', () => {
+  const js = fs.readFileSync(new URL('../public/pwa.js', import.meta.url), 'utf8');
+  assert.ok(js.includes('Uygulamayı yükle'));
+  assert.ok(js.includes("setAttribute('aria-label', 'Kapat')"));
+  assert.ok(js.includes('pwa-install-line'));
+  assert.ok(!js.includes('Uygulamayı ana ekranınıza ekleyebilirsiniz'));
+  assert.ok(!/installBanner = showBanner/.test(js), 'kurulum ipucu sarı bant (warnbox) kullanmaz');
+  assert.ok(!js.includes("'role', 'alert'"));
+  const css = fs.readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
+  assert.ok(css.includes('.pwa-install-line'));
+  assert.ok(css.includes('.btn.is-disabled'));
+});
+
 test('7) elle gönderim; SMS geçmişi; ikinci gönderim engellenir', async () => {
   let r = await c.post('/hatirlatmalar/1/gonder', { _csrf: csrf }, { referer: app.base + '/sahipler/1?ok=x' });
   assert.equal(r.status, 302);
