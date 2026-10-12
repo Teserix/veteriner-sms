@@ -60,7 +60,7 @@
     <h2 class="card-title">SMS şablonu</h2>
     <label for="template">Mesaj metni</label>
     <textarea id="template" name="template" maxlength="320" rows="4"><%= settings.template %></textarea>
-    <div class="help">Kullanılabilir alanlar: {sahip} {hayvan} {tarih} {tur} {klinik} {klinik_tel}. Başa "Bilgilendirme:", sona kimlik ve iptal satırı sistemce eklenir; indirim, kampanya, ilaç adı ve teşhis ifadeleri kabul edilmez (veteriner hekim reklam yasağı, 6343 m.9; TVHB Uyg. Yön. m.97, m.68). Türkçe karakter kullanılırsa tek SMS 70 karakterdir; uzun mesaj birden çok SMS olarak ücretlendirilir.</div>
+    <div class="help">Kullanılabilir alanlar: {sahip} {hayvan} {tarih} {tur} {klinik} {klinik_tel}. Başa "Bilgilendirme:", sona kimlik ve iptal satırı sistemce eklenir; indirim, kampanya, ilaç adı ve teşhis ifadeleri kabul edilmez (veteriner hekim reklam yasağı, 6343 m.9; TVHB Uyg. Yön. m.97, m.68). Tek SMS 160 karakterdir (çok parçalıda parça başı 153). Netgsm ile Ğ İ Ş ç ğ ı ş 2 karakter sayılır ve sınır 155/149 olur; başka sağlayıcıda bu harfler ya da tablo dışı bir karakter (ör. emoji) varsa sınır 70/67'ye düşer. Ç Ö Ü ö ü sınırı değiştirmez. Uzun mesaj birden çok SMS olarak ücretlendirilir.</div>
     <label>Önizleme <span id="template-len" class="muted small"></span></label>
     <p class="mt0"><span id="template-parts" class="badge plain" aria-live="polite"></span></p>
     <div id="template-preview" class="pre sms-bubble" data-clinic="<%= settings.clinic_name %>" data-phone="<%= settings.clinic_phone %>" data-identity="<%= identityPreview %>" data-optout="<%= optOutPreview %>" data-tr-shift="<%= settings.sms_provider === 'netgsm' ? 1 : 0 %>"></div>
