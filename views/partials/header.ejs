@@ -3,9 +3,9 @@
   const _path = (typeof currentPath === 'string') ? currentPath : '';
   const _flash = (typeof flash === 'object' && flash) ? flash : { ok: '', err: '' };
   const _csrf = (typeof csrf === 'string') ? csrf : '';
-  const _tourAuto = (typeof tourAuto !== 'undefined') ? Boolean(tourAuto) : false;
   const _title = (typeof title === 'string') ? title : '';
   const _legalLocked = (typeof legalLocked === 'boolean') ? legalLocked : false;
+  const _tourAuto = Boolean(typeof tourAuto !== 'undefined' && tourAuto) && !_legalLocked;
   const _openRequests = (typeof openRequests === 'number') ? openRequests : 0;
   const _v = (typeof assetV === 'string') ? assetV : '';
   const _icon = (typeof icon === 'function') ? icon : () => '';
@@ -85,6 +85,7 @@
         <span class="me-text"><span class="me-name"><%= _user.name %></span><span class="me-role"><%= roleLabel %></span></span>
       </div>
       <div class="me-actions">
+        <% if (isClinic) { %><a href="#" class="nav-link" data-tour-start><%- _icon('info') %><span class="nav-label">Turu yeniden başlat</span></a><% } %>
         <a href="/sifre" class="nav-link<%= _path === '/sifre' ? ' active' : '' %>"<%- _path === '/sifre' ? ' aria-current="page"' : '' %>><%- _icon('key') %><span class="nav-label">Parola</span></a>
         <form method="post" action="/cikis"><input type="hidden" name="_csrf" value="<%= _csrf %>"><button class="nav-link" type="submit"><%- _icon('logout') %><span class="nav-label">Çıkış</span></button></form>
       </div>

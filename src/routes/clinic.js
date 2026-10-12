@@ -34,6 +34,7 @@ export function clinicScope(req, res, next) {
     res.locals.settings = { ...req.settings, sms_credentials: undefined };
     // Panel üst bandı: hukuki kimlik eksikse gönderim kilitli uyarısı; açık ilgili kişi başvurusu sayacı
     res.locals.legalLocked = legalProblems(req.settings).length > 0;
+    if (res.locals.legalLocked) res.locals.tourAuto = false; // kilitliyken karşılama turu açılmaz
     res.locals.openRequests = subjectRequests.openCount(req.db);
   }
   next();

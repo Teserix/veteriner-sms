@@ -43,6 +43,7 @@ function icon(name, cls = '') {
 /**
  * Header'daki _tourAuto: klinik kullanıcısı, parolasını değiştirmiş ve turu henüz görmemişse.
  * Süper yönetici adımları klinik ekranlarına ait olduğu için false.
+ * Hukuki kimlik/sözleşme eksikse (legalLocked) clinicScope bayrağı kapatır; header da ayrıca korur.
  */
 function tourAutoFor(req) {
   const u = req.user;
@@ -62,7 +63,7 @@ export function createApp() {
 
   // Görünüm varsayılanları: erken hata sayfaları (CSRF 403, 404, 500) bile güvenle render edilir
   Object.assign(app.locals, {
-    user: null, csrf: '', settings: {}, currentPath: '', flash: { ok: '', err: '' }, tourAuto: false, _tourAuto: false,
+    user: null, csrf: '', settings: {}, currentPath: '', flash: { ok: '', err: '' }, tourAuto: false,
     formatPhone, formatDate, formatDateTime, REMINDER_TYPES, STATUS_LABELS, SPECIES,
     icon, assetV: ASSET_VERSION,
   });
@@ -90,7 +91,8 @@ export function createApp() {
    * Dosya adları sabittir; kullanıcı girdisiyle yol birleştirme yoktur.
    */
   const sendPublicFile = (res, next, name, headers) =>
-    res.sendFile(path.join(publicDir, name), { headers }, (err) => {
+    // root: dotfile denetimi yalnız dosya adına uygulanır (kurulum yolunda ".klasor" olsa da 404 olmaz)
+    res.sendFile(name, { root: publicDir, headers }, (err) => {
       if (err && !res.headersSent) next(err);
     });
 
@@ -121,7 +123,6 @@ export function createApp() {
       err: typeof req.query.err === 'string' ? req.query.err.slice(0, 300) : '',
     };
     res.locals.tourAuto = tourAutoFor(req);
-    res.locals._tourAuto = res.locals.tourAuto;
     next();
   });
 
