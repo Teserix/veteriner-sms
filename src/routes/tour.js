@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireLogin } from '../auth.js';
+import { requireLogin, needsLegalAcceptance } from '../auth.js';
 import { users } from '../db/master.js';
 import { nowIso, returnTo } from '../util.js';
 
@@ -16,6 +16,10 @@ function prefersNoContent(req) {
 }
 
 tourRouter.post('/tur/goruldu', requireLogin, (req, res) => {
+  if (needsLegalAcceptance(req)) {
+    if (String(req.get('accept') || '').includes('application/json')) return res.status(403).json({ ok: false });
+    return res.status(403).render('error', { title: 'Sözleşme onayı gerekli', message: 'Devam etmeden önce güncel sözleşmeyi kabul etmelisiniz.' });
+  }
   users.markTourSeen(req.user.id, nowIso());
   if (prefersNoContent(req)) return res.status(204).end();
   return res.redirect(303, returnTo(req, '/'));

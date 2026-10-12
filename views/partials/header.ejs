@@ -40,7 +40,7 @@
   <title><%= _title ? _title + ' · ' : '' %>Veteriner SMS</title>
   <link rel="stylesheet" href="/static/style.css<%= _v ? '?v=' + _v : '' %>">
 </head>
-<body class="<%= _user ? 'has-shell' : 'no-shell' %><%= isClinic ? ' has-tabbar' : '' %>"<% if (_tourAuto) { %> data-tour-auto="1"<% } %>>
+<body class="<%= _user ? 'has-shell' : 'no-shell' %><%= isClinic ? ' has-tabbar' : '' %>"<% if (isClinic) { %> data-role="<%= _user.role %>"<% } %><% if (_tourAuto) { %> data-tour-auto="1"<% } %>>
 <a class="skip-link" href="#main">İçeriğe geç</a>
 <% if (_user) { %>
 <div class="shell">

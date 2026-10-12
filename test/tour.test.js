@@ -221,4 +221,66 @@ describe('POST /tur/goruldu', () => {
     assert.doesNotMatch(page.text, /data-tour-auto="1"/);
     assert.match(page.text, /data-tour-start/);
   });
+
+  test("sözleşme kabul edilmemişken /sozlesme yanıtında data-tour-auto yok", async () => {
+    const email = "tour-sozlesme1@klinik.test";
+    const { id } = await createClinicViaHttp(sa, { name: "Tur Sozlesme Bir", adminEmail: email, adminPassword: "GeciciS123", legalReady: false });
+    await makeLegalReady(id);
+    const pending = createClient(app.base);
+    await loginAndChangePassword(pending, email, "GeciciS123", "ParolaS123", { acceptContracts: false });
+    const page = await pending.get("/sozlesme");
+    assert.equal(page.status, 200);
+    assert.match(page.text, /name="accept_/);
+    assert.doesNotMatch(page.text, /data-tour-auto="1"/);
+  });
+
+  test("sözleşme kabul edilmemişken POST /tur/goruldu 403; kabulden sonra bayrak görünür", async () => {
+    const email = "tour-sozlesme2@klinik.test";
+    const { id } = await createClinicViaHttp(sa, { name: "Tur Sozlesme Iki", adminEmail: email, adminPassword: "GeciciT123", legalReady: false });
+    await makeLegalReady(id);
+    const pending = createClient(app.base);
+    await loginAndChangePassword(pending, email, "GeciciT123", "ParolaT123", { acceptContracts: false });
+    const { users } = await import("../src/db/master.js");
+    const csrf = await csrfFor(pending, "/sozlesme");
+    assert.ok(csrf);
+
+    const form = await pending.post("/tur/goruldu", { _csrf: csrf });
+    assert.equal(form.status, 403);
+    const json = await pending.post("/tur/goruldu", { _csrf: csrf }, { accept: "application/json" });
+    assert.equal(json.status, 403);
+    assert.deepEqual(JSON.parse(json.text), { ok: false });
+    assert.equal(users.byEmail(email).tour_seen_at, null);
+
+    await acceptLegal(pending);
+    const dash = await pending.get("/");
+    assert.equal(dash.status, 200);
+    assert.match(dash.text, /data-tour-auto="1"/);
+  });
+
+  test("klinik sayfasında body data-role: yöneticide admin, personelde staff", async () => {
+    const page = await c.get("/");
+    assert.equal(page.status, 200);
+    assert.match(page.text, /<body[^>]*\sdata-role="admin"/);
+
+    const admin = await sa.get("/admin");
+    assert.doesNotMatch(admin.text, /data-role=/);
+
+    const { users } = await import("../src/db/master.js");
+    const clinicId = users.byEmail(C.email).clinic_id;
+    const staffEmail = "tour-personel@klinik.test";
+    const csrf = await csrfFor(sa, "/admin");
+    const made = await sa.post(`/admin/klinik/${clinicId}/kullanici`, { _csrf: csrf, name: "Tur Personel", email: staffEmail, password: "Personel123", role: "staff" });
+    assert.equal(made.status, 302);
+    await resetLoginLimiter();
+    const staff = createClient(app.base);
+    const r = await login(staff, staffEmail, "Personel123");
+    if (String(r.location).startsWith("/sifre")) {
+      const t = await csrfFor(staff, "/sifre");
+      await staff.post("/sifre", { _csrf: t, current: "Personel123", password: "PersonelYeni123", password2: "PersonelYeni123" });
+    }
+    const sp = await staff.get("/");
+    assert.equal(sp.status, 200);
+    assert.match(sp.text, /<body[^>]*\sdata-role="staff"/);
+    assert.doesNotMatch(sp.text, /data-role="admin"/);
+  });
 });

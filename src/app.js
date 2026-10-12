@@ -10,7 +10,7 @@ import { opsRouter } from './routes/ops.js';
 import { authRouter } from './routes/auth.js';
 import { adminRouter } from './routes/admin.js';
 import { usersRouter } from './routes/users.js';
-import { clinicRouter, clinicScope } from './routes/clinic.js';
+import { clinicRouter, clinicScope, isClinicPath } from './routes/clinic.js';
 import { ownersRouter } from './routes/owners.js';
 import { remindersRouter } from './routes/reminders.js';
 import { quickRouter } from './routes/quick.js';
@@ -43,7 +43,9 @@ function icon(name, cls = '') {
 /**
  * Header'daki _tourAuto: klinik kullanıcısı, parolasını değiştirmiş ve turu henüz görmemişse.
  * Süper yönetici adımları klinik ekranlarına ait olduğu için false.
- * Hukuki kimlik/sözleşme eksikse (legalLocked) clinicScope bayrağı kapatır; header da ayrıca korur.
+ * Yalnız legalAcceptanceGate ve clinicScope geçildikten sonra, klinik ekranlarında hesaplanır:
+ * sözleşmesi kabul edilmemiş yönetici /sozlesme sayfasında turu görmez (legalRouter clinicScope'tan önce biter).
+ * Hukuki kimlik eksikse (clinicScope'taki res.locals.legalLocked) false; header da ayrıca korur.
  */
 function tourAutoFor(req) {
   const u = req.user;
@@ -122,7 +124,6 @@ export function createApp() {
       ok: typeof req.query.ok === 'string' ? req.query.ok.slice(0, 300) : '',
       err: typeof req.query.err === 'string' ? req.query.err.slice(0, 300) : '',
     };
-    res.locals.tourAuto = tourAutoFor(req);
     next();
   });
 
@@ -134,11 +135,12 @@ export function createApp() {
   /* ---------- Rotalar ---------- */
   app.use(publicRouter);          // oturumsuz: hukuki metinler, iletişim, klinik aydınlatma, SMS ret bağlantısı
   app.use(authRouter);
-  app.use(tourRouter);            // POST /tur/goruldu — sözleşme kapısından önce; tur işareti klinik ekranına bağlı değil
+  app.use(tourRouter);            // POST /tur/goruldu — sözleşme kabul edilmemişse 403 (rota içinde needsLegalAcceptance)
   app.use('/admin', requireRole('superadmin'), adminRouter);
   app.use(legalAcceptanceGate);   // klinik yöneticisi güncel sözleşmeyi kabul etmeden klinik ekranlarına giremez
   app.use(legalRouter);
   app.use(clinicScope);
+  app.use((req, res, next) => { res.locals.tourAuto = isClinicPath(req.path) && tourAutoFor(req) && !res.locals.legalLocked; next(); });
   app.use('/kullanicilar', requireRole('admin'), usersRouter);
   app.use(ownersRouter);
   app.use(remindersRouter);
