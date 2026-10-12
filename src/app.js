@@ -10,13 +10,14 @@ import { opsRouter } from './routes/ops.js';
 import { authRouter } from './routes/auth.js';
 import { adminRouter } from './routes/admin.js';
 import { usersRouter } from './routes/users.js';
-import { clinicRouter, clinicScope } from './routes/clinic.js';
+import { clinicRouter, clinicScope, isClinicPath } from './routes/clinic.js';
 import { ownersRouter } from './routes/owners.js';
 import { remindersRouter } from './routes/reminders.js';
 import { quickRouter } from './routes/quick.js';
 import { importRouter } from './routes/import.js';
 import { publicRouter } from './routes/public.js';
 import { legalRouter } from './routes/legal.js';
+import { tourRouter } from './routes/tour.js';
 import { log } from './log.js';
 import { formatPhone, formatDate, formatDateTime, REMINDER_TYPES, STATUS_LABELS, SPECIES } from './util.js';
 
@@ -26,7 +27,7 @@ const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 /** Statik varlıkların içerik özeti: sürüm değişince tarayıcı ve service worker önbelleği eski CSS/JS'i kullanmaz */
 const ASSET_VERSION = (() => {
   const h = crypto.createHash('sha256');
-  for (const f of ['style.css', 'app.js', 'icons/sprite.svg']) {
+  for (const f of ['style.css', 'app.js', 'tour.js', 'icons/sprite.svg']) {
     try { h.update(fs.readFileSync(path.join(PUBLIC_DIR, f))); } catch { /* yoksa atla */ }
   }
   return h.digest('hex').slice(0, 10);
@@ -37,6 +38,20 @@ const ICON_NAME = /^[a-z-]+$/;
 function icon(name, cls = '') {
   if (!ICON_NAME.test(name)) return '';
   return `<svg class="icon${cls ? ' ' + cls : ''}" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg?v=${ASSET_VERSION}#i-${name}"/></svg>`;
+}
+
+/**
+ * Header'daki _tourAuto: klinik kullanıcısı, parolasını değiştirmiş ve turu henüz görmemişse.
+ * Süper yönetici adımları klinik ekranlarına ait olduğu için false.
+ * Yalnız legalAcceptanceGate ve clinicScope geçildikten sonra, klinik ekranlarında hesaplanır:
+ * sözleşmesi kabul edilmemiş yönetici /sozlesme sayfasında turu görmez (legalRouter clinicScope'tan önce biter).
+ * Hukuki kimlik eksikse (clinicScope'taki res.locals.legalLocked) false; header da ayrıca korur.
+ */
+function tourAutoFor(req) {
+  const u = req.user;
+  if (!u || u.role === 'superadmin' || !u.clinicId || u.mustChangePassword) return false;
+  const seen = req.session ? req.session.tour_seen_at : null;
+  return seen == null || seen === '';
 }
 
 /** Express uygulamasını kurar (dinlemez). Testler doğrudan bunu kullanır. */
@@ -50,7 +65,7 @@ export function createApp() {
 
   // Görünüm varsayılanları: erken hata sayfaları (CSRF 403, 404, 500) bile güvenle render edilir
   Object.assign(app.locals, {
-    user: null, csrf: '', settings: {}, currentPath: '', flash: { ok: '', err: '' },
+    user: null, csrf: '', settings: {}, currentPath: '', flash: { ok: '', err: '' }, tourAuto: false,
     formatPhone, formatDate, formatDateTime, REMINDER_TYPES, STATUS_LABELS, SPECIES,
     icon, assetV: ASSET_VERSION,
   });
@@ -78,7 +93,8 @@ export function createApp() {
    * Dosya adları sabittir; kullanıcı girdisiyle yol birleştirme yoktur.
    */
   const sendPublicFile = (res, next, name, headers) =>
-    res.sendFile(path.join(publicDir, name), { headers }, (err) => {
+    // root: dotfile denetimi yalnız dosya adına uygulanır (kurulum yolunda ".klasor" olsa da 404 olmaz)
+    res.sendFile(name, { root: publicDir, headers }, (err) => {
       if (err && !res.headersSent) next(err);
     });
 
@@ -119,10 +135,12 @@ export function createApp() {
   /* ---------- Rotalar ---------- */
   app.use(publicRouter);          // oturumsuz: hukuki metinler, iletişim, klinik aydınlatma, SMS ret bağlantısı
   app.use(authRouter);
+  app.use(tourRouter);            // POST /tur/goruldu — sözleşme kabul edilmemişse 403 (rota içinde needsLegalAcceptance)
   app.use('/admin', requireRole('superadmin'), adminRouter);
   app.use(legalAcceptanceGate);   // klinik yöneticisi güncel sözleşmeyi kabul etmeden klinik ekranlarına giremez
   app.use(legalRouter);
   app.use(clinicScope);
+  app.use((req, res, next) => { res.locals.tourAuto = isClinicPath(req.path) && tourAutoFor(req) && !res.locals.legalLocked; next(); });
   app.use('/kullanicilar', requireRole('admin'), usersRouter);
   app.use(ownersRouter);
   app.use(remindersRouter);

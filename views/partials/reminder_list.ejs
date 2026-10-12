@@ -1,6 +1,6 @@
 <%
   // Kullanım: include('partials/reminder_list', { rows, actions: 'send' | 'full' | 'none', showOwner: true })
-  //   send: yalnızca "Şimdi gönder" (özet)   full: gönder + tamamlandı + düzenle   none: salt okunur
+  //   send: yalnızca "Şimdi gönder" (özet; gönderim önizleme ekranından yapılır)   full: gönder + tamamlandı + düzenle   none: salt okunur
   const _rows = rows || [];
   const _actions = (typeof actions === 'string') ? actions : 'none';
   const _showOwner = (typeof showOwner === 'boolean') ? showOwner : true;
@@ -21,19 +21,20 @@
     <div class="rbody">
       <div class="rtitle"><span class="rpet"><%= r.pet_name %></span><span class="sep" aria-hidden="true">·</span><span class="what"><%= r.title %></span></div>
       <div class="rmeta">
-        <span><%- icon('calendar') %><span class="visually-hidden">Randevu:</span><%= formatDate(r.due_date) %><% if (open && Math.abs(diff) <= 30 && (diff >= 0 || waiting)) { %>&nbsp;<span class="rel<%= diff < 0 ? ' past' : '' %>">(<%= _rel(diff) %>)</span><% } %></span>
-        <% if (_showOwner) { %><a href="/sahipler/<%= r.owner_id %>"><%- icon('users') %><%= r.owner_name %></a><span class="tnum"><%= formatPhone(r.owner_phone) %></span><% } %>
-        <% if (r.sent_at) { %><span><%- icon('send') %>SMS <%= formatDateTime(r.sent_at) %></span><% } else if (open) { %><span><%- icon('clock') %>SMS <%= r.notify_days_before ? r.notify_days_before + ' gün önce' : 'aynı gün' %></span><% } %>
-        <% if (r.repeat_days) { %><span><%- icon('history') %>her <%= r.repeat_days %> gün</span><% } %>
-        <% if (r.last_error) { %><span class="err-text"><%- icon('alert') %><%= r.last_error %></span><% } %>
+        <span class="tnum"><span class="visually-hidden">Randevu:</span><%= formatDate(r.due_date) %><% if (open && Math.abs(diff) <= 30 && (diff >= 0 || waiting)) { %>&nbsp;<span class="rel<%= diff < 0 ? ' past' : '' %>">(<%= _rel(diff) %>)</span><% } %></span>
+        <% if (_showOwner) { %><a href="/sahipler/<%= r.owner_id %>"><%= r.owner_name %></a><span class="tnum"><%= formatPhone(r.owner_phone) %></span><% } %>
+        <% if (r.sent_at) { %><span class="tnum">SMS <%= formatDateTime(r.sent_at) %></span><% } else if (open) { %><span>SMS <%= r.notify_days_before ? r.notify_days_before + ' gün önce' : 'aynı gün' %></span><% } %>
+        <% if (r.repeat_days) { %><span>Her <%= r.repeat_days %> günde bir</span><% } %>
+        <% if (r.last_error) { %><span class="err-text">Hata: <%= r.last_error %></span><% } %>
       </div>
     </div>
     <div class="rside">
-      <% if (!r.sms_opt_in && open) { %><span class="badge cancelled">SMS istemiyor</span><% } else if (r.last_error && r.status !== 'failed') { %><span class="badge failed" title="<%= r.last_error %>">Hata (<%= r.attempts %>)</span><% } else { %><span class="badge <%= r.status %>"><%= STATUS_LABELS[r.status] %></span><% } %>
+      <% if (!r.sms_opt_in && open) { %><span class="badge cancelled">SMS istemiyor</span><% } else if (r.last_error && r.status !== 'failed') { %><span class="badge failed" title="<%= r.last_error %>">Hata (<%= r.attempts %>)</span><% } else if (r.status !== 'pending') { %><span class="badge <%= r.status %>"><%= STATUS_LABELS[r.status] %></span><% } %>
+      <%# 'Bekliyor' varsayılan durumdur; rozet yalnız istisnalarda (hata, gönderildi, iptal…) gösterilir. %>
       <% if (_actions !== 'none') { %>
       <span class="actions">
         <% if (canSend) { %>
-        <form method="post" action="/hatirlatmalar/<%= r.id %>/gonder" data-confirm="<%= r.owner_name %> (<%= formatPhone(r.owner_phone) %>) numarasına &quot;<%= r.title %>&quot; hatırlatma SMS'i şimdi gönderilsin mi?"><input type="hidden" name="_csrf" value="<%= csrf %>"><button class="btn sm secondary" type="submit"><%- icon('send') %><%= _actions === 'send' ? 'Şimdi gönder' : 'SMS gönder' %></button></form>
+        <a class="btn sm secondary" href="/hatirlatmalar/<%= r.id %>/onizle" aria-label="SMS önizle ve gönder: <%= r.pet_name %> – <%= r.title %>"><%- icon('send') %><%= _actions === 'send' ? 'Şimdi gönder' : 'SMS gönder' %></a>
         <% } %>
         <% if (_actions === 'full' && open) { %>
         <form method="post" action="/hatirlatmalar/<%= r.id %>/durum"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="status" value="done"><button class="btn sm secondary" type="submit"><%- icon('check') %>Tamamlandı</button></form>

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { setupEnv } from './helpers.js';
 
 setupEnv();
-const { templateProblems, contentProblems, composeMessage, identityLine, optOutLine, normalizeTr, TEMPLATE_VARS } = await import('../src/sms/policy.js');
+const { bodyProblems, imitatesTail, templateProblems, contentProblems, composeMessage, identityLine, optOutLine, normalizeTr, TEMPLATE_VARS } = await import('../src/sms/policy.js');
 const { MAX_MESSAGE_LENGTH } = await import('../src/sms/index.js');
 const { legalProblems, DEFAULT_SETTINGS } = await import('../src/db/tenant.js');
 
@@ -83,5 +83,32 @@ describe('legalProblems', () => {
     assert.ok(legalProblems({ ...esnaf, ruhsat_isim: '' })[0].includes('işletme adı'));
     assert.ok(legalProblems({ ...tacir, m61_declared_at: '' })[0].includes('beyan'));
     assert.ok(legalProblems({ ...tacir, clinic_phone: '' })[0].includes('telefon'));
+  });
+});
+
+describe('gövdede iptal/ret satırı taklidi (imitatesTail / bodyProblems)', () => {
+  const positives = [
+    'İptal için kısa-link: bit.ly/x', 'IPTAL: x', 'iptal : 0212', 'İPTAL İÇİN KISA LİNK', 'Ret: tıklayın', 'RET için SMS gönderin',
+    'kısa link ile çıkın', 'Kisa-Link verilmiştir', 'kısa bağlantı ekte', 'İptal linki aşağıda', 'ret bağlantısı: x',
+    'SMS almamak için 1 yazın', 'SMS almak istemiyorsanız arayın', 'SMS istemiyorsanız yazın', 'Listeden çıkmak için yanıtlayın',
+    'abonelikten çık', 'bkz. example.com/ret/abc', 'MERSIS:1234', 'VKN: 1', 'ıptal için lınk', 'Iptal icin tikla',
+  ];
+  const negatives = [
+    'Sayın Mehmet Kaya, Boncuk için 10.09.2026 tarihinde aşı randevunuz vardır.',
+    'Randevunuzu iptal etmek ya da ertelemek için kliniği arayabilirsiniz.',
+    'Randevu iptali için lütfen bizi arayın.',
+    'Boncuk kısa bir kontrol için bekleniyor.',
+    'Kontrol sonrası sargının kısa sürede çıkarılması gerekir.',
+    'Garanti: aşı kartınızı getirin.',
+    'Ferret aşısı zamanı geldi.',
+    'Pamuk için sıra numaranız: 12.',
+  ];
+  for (const t of positives) test('yakalar: ' + t, () => {
+    assert.equal(imitatesTail(t), true, t);
+    assert.ok(bodyProblems(t, tacir).some((p) => p.includes('iptal satırı')), t);
+  });
+  for (const t of negatives) test('yanlış pozitif yok: ' + t, () => {
+    assert.equal(imitatesTail(t), false, t);
+    assert.ok(!bodyProblems(t, tacir).some((p) => p.includes('iptal satırı')), t);
   });
 });

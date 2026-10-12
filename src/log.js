@@ -1,4 +1,4 @@
-import { maskPhone } from './util.js';
+import { maskPhoneTail } from './util.js';
 
 /**
  * Tek satırlık günlük. Telefon numaraları maskelenir; mesaj gövdesi, parola,
@@ -17,5 +17,5 @@ export const log = {
   info: (msg, meta) => line('info', msg, meta),
   warn: (msg, meta) => line('warn', msg, meta),
   error: (msg, meta) => line('error', msg, meta),
-  maskPhone,
+  maskPhone: maskPhoneTail, // loglarda numaranın yalnızca son 2 hanesi
 };

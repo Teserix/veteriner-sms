@@ -143,6 +143,8 @@ Ayrıntı: `docs/mevzuat-uyum-spesifikasyonu.md` (doğrulanmış dayanaklar, avu
   (`/sahipler/disa-aktar.csv`).
 - **Hatırlatmalar** (`/hatirlatmalar`): bugün/yaklaşan/gecikmiş listeleri, durum değiştirme,
   **Şimdi gönder** (zamanlayıcıyı beklemeden tek hatırlatmayı gönderir; saatte en fazla 30).
+- **SMS önizleme** (`/hatirlatmalar/:id/onizle`): gönderilecek tam metin (kimlik + gövde + iptal),
+  gövde düzenleme ve canlı parça sayacı. Ayrıntı: `docs/sms-onizleme.md`.
 - **SMS geçmişi** (`/sms`): son 300 gönderim, sağlayıcı yanıtı ve hata metni.
 - **Özet** (`/`): bugün gönderilecekler, aylık sayaçlar, **günlük SMS sınırı** kullanımı.
 
@@ -167,7 +169,19 @@ Sağlayıcı ve hesap bilgileri klinik başına `/ayarlar` sayfasından girilir;
 | **Netgsm** | Kullanıcı adı (usercode/abone no) + **API şifresi** | REST v2 (`/sms/rest/v2/send`, Basic auth). `msgheader` = Netgsm panelinde **onaylı mesaj başlığı** (en fazla 11 karakter). Alıcı **10 hane** (`5XXXXXXXXX`) gönderilir. Netgsm panelinde API erişimi ve gerekiyorsa IP izni açık olmalı (hata 30). |
 | **İleti Merkezi** | API Key + API Hash | `/v1/send-sms/json`; gönderici başlığı panelde **onaylı** olmalı (hata 453). `iys=0` (bilgilendirme mesajı) ile gönderilir. |
 | **Twilio** (isteğe bağlı) | Account SID + Auth Token | Gönderici `+90…` (E.164) biçiminde Twilio numarası. |
-| **Konsol** (test) | – | Gerçek SMS gitmez; maskelenmiş numara ve karakter sayısı loga yazılır. Yeni kliniklerin varsayılanı. |
+| **Konsol** (test) | – | Gerçek SMS gitmez; numaranın yalnızca son 2 hanesi ve karakter sayısı loga yazılır. Yeni kliniklerin varsayılanı. |
+
+### SMS_MODE (gönderim kapısı)
+
+Sağlayıcıya giden her çağrı (zamanlayıcı, "şimdi gönder"/önizlemeden gönderim, Test SMS)
+tek bir kapıdan (`src/sms/index.js` `deliver()`) geçer. Gerçek gönderim **yalnızca
+`SMS_MODE=live`** iken yapılır. Değişken yoksa, `console` ise ya da başka bir değer taşıyorsa,
+klinikte sağlayıcı ve hesap bilgisi kayıtlı olsa bile ağ çağrısı yapılmaz; gönderim başarılı
+sayılır (`sms_log`'da sağlayıcı `console`) ve konsola yalnızca numaranın son 2 hanesi ile karakter
+sayısı yazılır (mesaj metni loglanmaz).
+
+- Varsayılan: `console` (geliştirme/test).
+- Üretimde gerçek SMS için: `SMS_MODE=live`.
 
 Sağlayıcı değiştirildiğinde eski hesap bilgileri silinir; aynı sağlayıcıda alanlar boş
 bırakılırsa mevcut bilgiler korunur.

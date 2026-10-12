@@ -18,7 +18,7 @@
       <td class="small tnum" data-label="Zaman"><%= formatDateTime(s.created_at) %><span class="cell-sub"><%= s.sent_by === 'zamanlayici' ? 'otomatik' : s.sent_by %><%= s.kind === 'test' ? ' · test' : '' %></span></td>
       <td class="small pre" data-label="Mesaj"><%= s.message %><% if (s.legal_basis) { %><span class="cell-sub">dayanak: <%= s.legal_basis === 'm6_1' ? 'm.6/1 bakım bilgilendirmesi' : s.legal_basis %> · iys=<%= s.iys_flag %></span><% } %><% if (s.anonymized_at) { %><span class="cell-sub">anonimleştirildi <%= formatDateTime(s.anonymized_at) %></span><% } %></td>
       <td class="small" data-label="Sağlayıcı"><%= s.provider %><% if (s.provider_ref) { %><span class="cell-sub mono"><%= s.provider_ref %></span><% } %></td>
-      <td data-label="Durum"><span class="badge <%= s.status === 'sent' ? 'ok' : 'failed' %>"><%= s.status === 'sent' ? 'Gönderildi' : 'Hata' %></span><% if (s.error) { %><span class="cell-sub"><%= s.error %></span><% } %></td>
+      <td data-label="Durum"><span class="badge <%= s.status === 'sent' ? 'ok' : s.status === 'simulated' ? 'muted' : 'failed' %>"><%= s.status === 'sent' ? 'Gönderildi' : s.status === 'simulated' ? 'Simüle edildi (gönderilmedi)' : 'Hata' %></span><% if (s.error) { %><span class="cell-sub"><%= s.error %></span><% } %></td>
     </tr>
     <% } %>
     </tbody>

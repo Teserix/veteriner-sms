@@ -34,6 +34,7 @@ export function clinicScope(req, res, next) {
     res.locals.settings = { ...req.settings, sms_credentials: undefined };
     // Panel üst bandı: hukuki kimlik eksikse gönderim kilitli uyarısı; açık ilgili kişi başvurusu sayacı
     res.locals.legalLocked = legalProblems(req.settings).length > 0;
+    if (res.locals.legalLocked) res.locals.tourAuto = false; // kilitliyken karşılama turu açılmaz
     res.locals.openRequests = subjectRequests.openCount(req.db);
   }
   next();
@@ -203,6 +204,7 @@ clinicRouter.post('/ayarlar/test', requireRole('admin'), limiters.testSms.middle
   // Gerçek gönderimle aynı kuyruk (kimlik + iptal satırı) eklenir ki yönetici alıcının göreceği metni görsün
   const message = composeMessage(settings, `Test mesajı - ${settings.clinic_name || 'Veteriner SMS'}`, { clinicId: req.user.clinicId, optOutToken: '' });
   const r = await dispatch({ clinicId: req.user.clinicId, db: req.db, settings, kind: 'test', to: phone, message, sentBy: req.user.email });
+  if (r.ok && r.simulated) return res.redirect(withFlash('/ayarlar', 'err', 'Test SMS simüle edildi, gönderilmedi (SMS_MODE live değil).'));
   if (r.ok) return res.redirect(withFlash('/ayarlar', 'ok', `Test SMS gönderildi (${r.providerName}).`));
   res.redirect(withFlash('/ayarlar', 'err', 'Gönderilemedi: ' + r.error));
 });

@@ -52,12 +52,15 @@ quickRouter.post('/hizli-kayit', (req, res) => {
       ownerCreated = true;
     }
     const petId = pets.create(req.db, { owner_id: owner.id, name: petName, species, breed: trim(b.breed, 80) || null, sex, birth_date: isValidDate(b.birth_date) ? b.birth_date : null, notes: null, created_at: at });
+    let reminderId = null;
     if (addReminder) {
-      reminders.create(req.db, { pet_id: petId, type, title, due_date: dueDate, notify_days_before: notify, repeat_days: repeat > 0 ? Math.min(3650, repeat) : null, notes: null, created_at: at, created_by: req.user.email });
+      reminderId = reminders.create(req.db, { pet_id: petId, type, title, due_date: dueDate, notify_days_before: notify, repeat_days: repeat > 0 ? Math.min(3650, repeat) : null, notes: null, created_at: at, created_by: req.user.email });
     }
-    return { ownerId: owner.id, ownerCreated };
+    return { ownerId: owner.id, ownerCreated, reminderId };
   });
 
+  // "Kaydet ve SMS'i önizle": hatırlatma oluştuysa doğrudan gönderim önizlemesine geç
+  if (b.sonra === 'onizle' && result.reminderId) return res.redirect(`/hatirlatmalar/${result.reminderId}/onizle`);
   const msg = result.ownerCreated ? 'Kayıt oluşturuldu.' : 'Bu telefon zaten kayıtlıydı; hayvan mevcut hasta sahibine eklendi.';
   res.redirect(`/sahipler/${result.ownerId}?ok=` + encodeURIComponent(msg));
 });

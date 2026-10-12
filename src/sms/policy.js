@@ -109,19 +109,158 @@ export function optOutLine(settings, clinicId, token) {
   return parts.length ? `Iptal: ${parts.join(' ')}` : '';
 }
 
-/**
- * Nihai SMS metni: "Bilgilendirme: <gövde> <kimlik> <iptal>". Toplam MAX_MESSAGE_LENGTH'i aşarsa gövde kırpılır;
- * kuyruk asla kırpılmaz.
- */
-export function composeMessage(settings, body, { clinicId = '', optOutToken = '' } = {}) {
-  const tail = [identityLine(settings), optOutLine(settings, clinicId, optOutToken)].filter(Boolean).join(' ');
+function tailOf(settings, clinicId, optOutToken) {
+  const identity = identityLine(settings);
+  const optOut = optOutLine(settings, clinicId, optOutToken);
+  return { identity, optOut, tail: [identity, optOut].filter(Boolean).join(' ') };
+}
+
+/** composeMessage'in gövdeye uyguladığı boşluk normalleştirmesi */
+export const oneLineBody = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+
+/** Kullanıcının gönderdiği gövde şablondan çıkanla aynı mı (boşluk farkları yok sayılır) */
+export const sameBody = (a, b) => oneLineBody(a) === oneLineBody(b);
+
+/** composeMessage'in parçalı hâli: önizleme ve gönderim aynı birleştirmeyi kullanır */
+function composeParts(settings, body, { clinicId = '', optOutToken = '' } = {}) {
+  const { identity, optOut, tail } = tailOf(settings, clinicId, optOutToken);
   const room = MAX_MESSAGE_LENGTH - PREFIX.length - (tail ? tail.length + 1 : 0);
   let b = String(body || '').replace(/\s+/g, ' ').trim();
   if (b.length > room) b = b.slice(0, Math.max(0, room - 1)).trimEnd() + '…';
-  return `${PREFIX}${b}${tail ? ' ' + tail : ''}`;
+  return { prefix: PREFIX, body: b, identity, optOut, full: `${PREFIX}${b}${tail ? ' ' + tail : ''}` };
 }
 
-/** Şablon + değişkenler + kuyruk (hatırlatma ve önizleme bunu kullanır) */
+/**
+ * Nihai SMS metni: "Bilgilendirme: <gövde> <kimlik> <iptal>". Toplam MAX_MESSAGE_LENGTH'i aşarsa gövde kırpılır;
+ * kuyruk asla kırpılmaz. (Kullanıcının düzenlediği gövde bodyProblems ile önceden reddedilir; kırpılmaz.)
+ */
+export function composeMessage(settings, body, opts = {}) {
+  return composeParts(settings, body, opts).full;
+}
+
+/**
+ * Gönderilecek tam metnin parçaları. Önizleme ekranı ve gönderim (composeFromTemplate -> buildMessage) bunu kullanır;
+ * böylece önizlenen metin ile gönderilen metin aynı fonksiyondan çıkar.
+ * bodyOverride verilirse şablon yerine kullanıcının düzenlediği gövde kullanılır (önek ve kuyruk yine sistemce eklenir).
+ */
+export function previewParts(settings, vars, { clinicId = '', optOutToken = '', bodyOverride } = {}) {
+  const originalBody = renderTemplate(settings.template, vars);
+  const source = bodyOverride ?? originalBody;
+  const parts = composeParts(settings, source, { clinicId, optOutToken });
+  return {
+    ...parts,
+    segments: smsSegments(parts.full, { turkishShift: usesTurkishShift(settings) }),
+    edited: bodyOverride != null && !sameBody(bodyOverride, originalBody),
+    originalBody,
+    originalBodyOneLine: oneLineBody(originalBody),
+    turkishShift: usesTurkishShift(settings),
+    maxBodyLength: MAX_BODY_LENGTH,
+  };
+}
+
+/** Şablon + değişkenler + kuyruk (hatırlatma ve önizleme bunu kullanır); opts.bodyOverride kabul eder */
 export function composeFromTemplate(settings, vars, opts) {
-  return composeMessage(settings, renderTemplate(settings.template, vars), opts);
+  return previewParts(settings, vars, opts).full;
+}
+
+/**
+ * Kullanıcının düzenlediği gövdenin denetimi (sorun listesi döner; boş liste = geçerli).
+ * Gövde kırpılmaz: toplam uzunluk aşılırsa hata verilir. Gövde kimlik/iptal satırını taklit edemez
+ * (alıcı sahte bir "Iptal:" bağlantısıyla yanıltılmasın; m.8/3, m.9/3).
+ */
+export function bodyProblems(body, settings, { clinicId = '', optOutToken = '' } = {}) {
+  const raw = String(body ?? '');
+  const b = raw.trim();
+  if (!b) return ['Mesaj gövdesi boş olamaz.'];
+  const out = [];
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001F\u007F-\u009F]/.test(raw)) out.push('Mesaj gövdesinde satır sonu, sekme veya kontrol karakteri olamaz.');
+  if (b.length > MAX_BODY_LENGTH) out.push(`Mesaj gövdesi en fazla ${MAX_BODY_LENGTH} karakter olabilir.`);
+  const { tail } = tailOf(settings || {}, clinicId, optOutToken);
+  const total = PREFIX.length + b.length + (tail ? tail.length + 1 : 0);
+  if (total > MAX_MESSAGE_LENGTH) out.push(`Kimlik ve iptal satırıyla birlikte mesaj ${MAX_MESSAGE_LENGTH} karakteri aşıyor (${total}); gövdeyi kısaltın.`);
+  if (imitatesTail(b)) out.push('Gövde kimlik (MERSIS/VKN) veya iptal satırı içeremez; bu satırlar sistemce eklenir.');
+  out.push(...contentProblems(b));
+  return out;
+}
+
+/**
+ * Gövdede kimlik/iptal/ret satırı taklidi (normalizeTr sonrası: İ/I/ı -> i, büyük-küçük harf ve aksan farkı yok).
+ * Meşru bakım metni ("randevunuzu iptal etmek için kliniği arayın") yakalanmaz; yalnız satır/bağlantı biçimli taklitler.
+ */
+const TAIL_IMITATION = Object.freeze([
+  /\b(mersis|vkn|tckn|iptal|ret|red)\s*[:=]/,              // "Iptal:", "RET =", "MERSIS:"
+  /\bkisa[\s._-]*(link|baglanti|url)/,                      // "kısa-link", "kisa link", "kısa bağlantı"
+  /\b(iptal|ret|red)\s*(icin|etmek icin)\s*(link|baglanti|url|tikla|kisa|sms|mesaj|yaz|gonder)/, // "İptal için kısa-link", "ret için SMS"
+  /\b(iptal|ret)\s*(linki|baglantisi)/,                       // "iptal linki", "ret bağlantısı"
+  /\bsms\s*(almamak|almak istemiyorsan|istemiyorsan)/,         // "SMS almamak için", "SMS almak istemiyorsanız"
+  /\b(listeden|abonelikten)\s*cik/,                           // "listeden çıkmak için"
+  /\/ret\//,                                                   // sahte ret URL yolu
+]);
+
+export function imitatesTail(body) {
+  const n = normalizeTr(body);
+  return TAIL_IMITATION.some((re) => re.test(n));
+}
+
+/**
+ * Gönderimden hemen önce son kilit: metin önekle başlamalı ve gerçek kimlik + iptal kuyruğuyla bitmeli.
+ * Kimlik satırı boşsa (hukuki kimlik eksik) false döner.
+ */
+export function hasMandatoryTail(message, settings, clinicId = '', token = '') {
+  const m = String(message || '');
+  const { identity, optOut, tail } = tailOf(settings || {}, clinicId, token);
+  if (!identity || !optOut) return false;
+  return m.startsWith(PREFIX) && m.endsWith(' ' + tail);
+}
+
+/* ---------- SMS parça sayacı ---------- */
+
+/**
+ * Kodlama: GSM 03.38 temel tablosu + genişletme tablosu (^ { } \ [ ~ ] | € = 2 birim). Ç, Ö, Ü, ö, ü temel tablodadır.
+ * Türkçe tek kaydırma tablosu (3GPP TS 23.038 A.2.1: Ğ İ Ş ç ğ ı ş) yalnızca sağlayıcı destekliyorsa
+ * (Netgsm encoding:"TR"; usesTurkishShift) kullanılır: bu harfler 2 birim sayılır ve UDH'deki 3 baytlık dil
+ * bilgisi yüzünden parça kapasitesi 155/149 olur ("gsm7tr"). Kaydırma tablosu yoksa ya da tabloda olmayan bir
+ * karakter varsa bütün mesaj UCS-2'ye geçer (70/67; birim = UTF-16 kod birimi).
+ * Çok parçalı mesajda 2 birimlik karakter (genişletme çifti / vekil çift) parça sınırında bölünemez; sonraki parçaya geçer.
+ * İstemci (public/app.js) aynı mantığı uygular; ortak vektörler test/fixtures/sms-segments.json içindedir.
+ */
+export const SMS_LIMITS = Object.freeze({
+  gsm7: { single: 160, multi: 153 }, gsm7tr: { single: 155, multi: 149 }, ucs2: { single: 70, multi: 67 },
+});
+
+const GSM7_BASIC = new Set(
+  '@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&\'()*+,-./0123456789:;<=>?' +
+  '¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà',
+);
+const GSM7_EXT = new Set('^{}\\[~]|€');
+const GSM7_TR_SHIFT = new Set('ĞİŞçğış');
+
+/** Sağlayıcı Türkçe tek kaydırma tablosunu destekliyor mu (Netgsm REST v2 encoding:"TR", src/sms/index.js) */
+export function usesTurkishShift(settings) {
+  return settings?.sms_provider === 'netgsm';
+}
+
+export function smsSegments(text, { turkishShift = false } = {}) {
+  const s = String(text ?? '');
+  let encoding = 'gsm7';
+  let sizes = [];
+  for (const ch of s) {
+    if (GSM7_BASIC.has(ch)) sizes.push(1);
+    else if (GSM7_EXT.has(ch)) sizes.push(2);
+    else if (turkishShift && GSM7_TR_SHIFT.has(ch)) { sizes.push(2); encoding = 'gsm7tr'; }
+    else { encoding = 'ucs2'; break; }
+  }
+  if (encoding === 'ucs2') sizes = Array.from(s, (ch) => ch.length);
+  const units = sizes.reduce((a, b) => a + b, 0);
+  const { single, multi } = SMS_LIMITS[encoding];
+  if (units === 0) return { encoding, units, segments: 0, perSegment: single, remainingInSegment: single };
+  if (units <= single) return { encoding, units, segments: 1, perSegment: single, remainingInSegment: single - units };
+  let segments = 1;
+  let used = 0;
+  for (const u of sizes) {
+    if (used + u > multi) { segments += 1; used = 0; }
+    used += u;
+  }
+  return { encoding, units, segments, perSegment: multi, remainingInSegment: multi - used };
 }

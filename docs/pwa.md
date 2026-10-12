@@ -76,7 +76,13 @@ görünmesi kabul edilemez. `public/sw.js` bu yüzden şöyle davranır:
 | `/static/...` (CSS, JS, ikonlar, çevrimdışı sayfası) | **stale-while-revalidate**: önbellekten anında sunulur, arka planda tazelenir. |
 
 Önbellekte tutulan tek şey **uygulama kabuğu**dur: `style.css`, `app.js`,
-`pwa.js`, ikonlar ve `offline.html`. Bunların hiçbiri kişisel veri içermez.
+`pwa.js`, `tour.js`, ikonlar ve `offline.html`. Bunların hiçbiri kişisel veri içermez.
+
+Sayfalar varlıkları `?v=<özet>` ile ister; özet (`ASSET_VERSION`, `src/app.js`)
+`style.css`, `app.js`, `tour.js` ve `sprite.svg` içeriğinden hesaplanır.
+Service worker önbellekte `ignoreSearch: true` ile eşleştirir ve sorgusuz anahtarla
+yazar (aynı varlığın sürüm kopyaları birikmez); arka plan tazelemesi
+`cache: 'reload'` ile HTTP önbelleğini atlar.
 
 ### Çevrimdışı davranış
 

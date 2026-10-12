@@ -6,10 +6,11 @@ import assert from 'node:assert/strict';
 import {
   setupEnv, createClient, startApp, createSuperadmin, login, csrfFor, csrfOf,
   createClinicViaHttp, loginAndChangePassword, logout, resetLoginLimiter,
-  LEGAL_SETTINGS,
+  LEGAL_SETTINGS, testFetch,
 } from './helpers.js';
 
 setupEnv();
+process.env.SMS_MODE = 'live'; // bu dosya sahte sağlayıcılarla gerçek gönderim yolunu sınar (ağ çağrısı yok)
 const { parseCsv, detectDelimiter } = await import('../src/csv.js');
 const { nextDueDate, sendReminderSms } = await import('../src/scheduler.js');
 const { PROVIDERS } = await import('../src/sms/index.js');
@@ -145,7 +146,7 @@ test('HTTP düzeltmeleri', async (t) => {
   await createSuperadmin('root@test.local', 'Root12345');
 
   await t.test('JSON gövdeli POST /giris 500 değil 403 döner', async () => {
-    const res = await fetch(app.base + '/giris', { method: 'POST', headers: { 'content-type': 'application/json', origin: app.base }, body: JSON.stringify({ email: 'a@b.co' }), redirect: 'manual' });
+    const res = await testFetch(app.base + '/giris', { method: 'POST', headers: { 'content-type': 'application/json', origin: app.base }, body: JSON.stringify({ email: 'a@b.co' }), redirect: 'manual' });
     assert.equal(res.status, 403);
   });
 
@@ -197,6 +198,7 @@ test('HTTP düzeltmeleri', async (t) => {
     assert.equal(r.status, 302);
     const db = openTenant(clinicId);
     const rem = db.prepare('SELECT * FROM reminders ORDER BY id DESC LIMIT 1').get();
+    setSetting(db, 'sms_provider', 'slow'); // gerçek gönderim yolu (sahte sağlayıcı); konsol simüle eder, kapatmaz
     r = await admin.post(`/hatirlatmalar/${rem.id}/gonder`, { _csrf: csrf });
     assert.ok(String(r.location).includes('ok='), r.location);
     assert.equal(reminders.get(db, rem.id).status, 'sent');

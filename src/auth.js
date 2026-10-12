@@ -222,11 +222,15 @@ export function pendingLegalDocs(user) {
 
 const LEGAL_GATE_EXEMPT = ['/sozlesme', '/cikis', '/sifre', '/iletisim'];
 
+/** Oturumdaki klinik yöneticisinin kabul etmesi gereken güncel belge var mı (yan etkisiz) */
+export function needsLegalAcceptance(req) {
+  return pendingLegalDocs(req.user).length > 0;
+}
+
 /** Klinik yöneticisi, güncel abonelik sözleşmesi ve veri işleme ekini kabul etmeden klinik ekranlarına giremez */
 export function legalAcceptanceGate(req, res, next) {
-  if (!req.user || req.user.role !== 'admin' || !req.user.clinicId) return next();
   if (LEGAL_GATE_EXEMPT.includes(req.path) || req.path.startsWith('/belgeler/') || req.path.startsWith('/ret/')) return next();
-  if (!pendingLegalDocs(req.user).length) return next();
+  if (!needsLegalAcceptance(req)) return next();
   if (req.method !== 'GET') {
     return res.status(403).render('error', { title: 'Sözleşme onayı gerekli', message: 'Devam etmeden önce güncel sözleşmeyi kabul etmelisiniz.' });
   }

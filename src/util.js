@@ -20,6 +20,13 @@ export function formatPhone(p) {
 }
 
 /** Loglar için: 905321234567 -> 90532*****67 */
+/** Log için: yalnızca son 2 hane görünür (örn. *********45). */
+export function maskPhoneTail(p) {
+  const s = String(p || '');
+  if (s.length < 3) return '***';
+  return '*'.repeat(s.length - 2) + s.slice(-2);
+}
+
 export function maskPhone(p) {
   const s = String(p || '');
   if (s.length < 6) return '***';

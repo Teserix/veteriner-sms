@@ -2,14 +2,15 @@
  *
  * Görevleri:
  *   1. Service Worker kaydı (yalnızca güvenli bağlamda)
- *   2. "Ana ekrana ekle" kurulum ipucu (Android + iOS yönergesi)
+ *   2. "Uygulamayı yükle" kurulum ipucu (Android + iOS yönergesi; nötr satır)
  *   3. "Yeni sürüm hazır" güncelleme bandı
  *   4. Çıkışta service worker önbelleklerini temizletme
  *   5. Standalone modda <html data-standalone="1">
  *
  * CSP çok sıkı: satır içi stil ve satır içi script yok. Bu yüzden bantlar
- * yalnızca public/style.css içinde ZATEN VAR OLAN sınıflarla kurulur:
- * .warnbox, .btn, .btn.sm, .btn.secondary, .row, .row.between, .small, .hidden
+ * yalnızca public/style.css içinde tanımlı sınıflarla kurulur:
+ * .warnbox, .btn, .btn.sm, .btn.secondary, .row, .row.between, .small, .hidden,
+ * .pwa-install-line (kurulum satırı)
  */
 (function () {
   'use strict';
@@ -92,6 +93,52 @@
     return box;
   }
 
+  /**
+   * Kurulum ipucu: sarı bant yerine nötr, ince ve kapatılabilir tek satır
+   * (.pwa-install-line). role=alert değil; sonradan eklendiği için polite duyurulur.
+   * aria-label yok: ad ve duyuru içerikten (.pwa-text) gelir, iOS yönergesi de okunur.
+   * Metin doldurulduktan sonra DOM'a eklenir.
+   * @param {object}   o
+   * @param {string}   o.text        Satır metni
+   * @param {string}   [o.action]    Metin düğmesi etiketi (yoksa düğme eklenmez)
+   * @param {Function} [o.onAction]  Metin düğmesine basılınca (box)
+   * @param {Function} o.onClose     × düğmesine basılınca (box)
+   * @returns {HTMLElement|null}
+   */
+  function showInstallLine(o) {
+    var main = document.querySelector('main');
+    if (!main) return null;
+
+    var box = document.createElement('div');
+    box.className = 'pwa-install-line';
+    box.setAttribute('role', 'status');
+
+    var msg = document.createElement('span');
+    msg.className = 'pwa-text';
+    msg.textContent = o.text;
+    box.appendChild(msg);
+
+    if (o.action) {
+      var act = document.createElement('button');
+      act.type = 'button';
+      act.className = 'pwa-action';
+      act.textContent = o.action;
+      act.addEventListener('click', function () { o.onAction(box); });
+      box.appendChild(act);
+    }
+
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'pwa-close';
+    close.setAttribute('aria-label', 'Kapat');
+    close.textContent = '×';
+    close.addEventListener('click', function () { o.onClose(box); });
+    box.appendChild(close);
+
+    main.insertBefore(box, main.firstChild);
+    return box;
+  }
+
   function removeBanner(box) {
     if (box && box.parentNode) box.parentNode.removeChild(box);
   }
@@ -117,36 +164,27 @@
     deferredPrompt = e;
     if (!onHomePage() || isStandalone() || dismissedRecently() || installBanner) return;
 
-    installBanner = showBanner({
-      label: 'Uygulamayı yükleme önerisi',
-      text: 'Uygulamayı ana ekranınıza ekleyebilirsiniz.',
-      buttons: [
-        {
-          label: 'Ana ekrana ekle',
-          onClick: function (box) {
-            var p = deferredPrompt;
-            deferredPrompt = null;
-            removeBanner(box);
-            installBanner = null;
-            if (!p) return;
-            p.prompt();
-            if (p.userChoice && p.userChoice.then) {
-              p.userChoice.then(function (choice) {
-                if (choice && choice.outcome !== 'accepted') rememberDismiss();
-              }).catch(function () { /* yoksay */ });
-            }
-          },
-        },
-        {
-          label: 'Şimdi değil',
-          secondary: true,
-          onClick: function (box) {
-            rememberDismiss();
-            removeBanner(box);
-            installBanner = null;
-          },
-        },
-      ],
+    installBanner = showInstallLine({
+      text: 'Bu uygulamayı cihazınıza kurabilirsiniz.',
+      action: 'Uygulamayı yükle',
+      onAction: function (box) {
+        var p = deferredPrompt;
+        deferredPrompt = null;
+        removeBanner(box);
+        installBanner = null;
+        if (!p) return;
+        p.prompt();
+        if (p.userChoice && p.userChoice.then) {
+          p.userChoice.then(function (choice) {
+            if (choice && choice.outcome !== 'accepted') rememberDismiss();
+          }).catch(function () { /* yoksay */ });
+        }
+      },
+      onClose: function (box) {
+        rememberDismiss();
+        removeBanner(box);
+        installBanner = null;
+      },
     });
   });
 
@@ -161,20 +199,13 @@
   if (onHomePage() && isIosSafari() && !isStandalone() && !dismissedRecently()) {
     document.addEventListener('DOMContentLoaded', function () {
       if (installBanner) return;
-      installBanner = showBanner({
-        label: 'Uygulamayı yükleme önerisi',
-        text: 'Ana ekrana eklemek için: Paylaş \u2192 "Ana Ekrana Ekle".',
-        buttons: [
-          {
-            label: 'Anladım',
-            secondary: true,
-            onClick: function (box) {
-              rememberDismiss();
-              removeBanner(box);
-              installBanner = null;
-            },
-          },
-        ],
+      installBanner = showInstallLine({
+        text: 'Uygulamayı yüklemek için: Paylaş \u2192 "Ana Ekrana Ekle".',
+        onClose: function (box) {
+          rememberDismiss();
+          removeBanner(box);
+          installBanner = null;
+        },
       });
     });
   }

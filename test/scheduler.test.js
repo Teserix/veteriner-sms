@@ -7,6 +7,12 @@ const { clinics, auditLog } = await import('../src/db/master.js');
 const { openTenant, closeAll, setSetting, getSettings, owners, pets, reminders, smsLog } = await import('../src/db/tenant.js');
 const { processClinic, sendReminderSms } = await import('../src/scheduler.js');
 const { randomId } = await import('../src/crypto.js');
+const { PROVIDERS } = await import('../src/sms/index.js');
+
+// Gerçek gönderim yolu sahte sağlayıcıyla sınanır (ağ çağrısı yok). SMS_MODE live değilken simüle davranışı
+// test/sms-simulated.test.js içindedir.
+process.env.SMS_MODE = 'live';
+PROVIDERS.testok = { label: 'testok', fields: [], senderHelp: '', async send() { return { ok: true, ref: 'testok' }; } };
 const { addDays, nowIso, nowLocal } = await import('../src/util.js');
 
 // Sabit "şimdi": 2026-09-03 09:00Z = İstanbul 12:00 (pencere 9-20 içinde)
@@ -25,6 +31,7 @@ function newClinic(settings = {}) {
   setSetting(db, 'clinic_phone', '0212 555');
   for (const [k, v] of Object.entries(LEGAL_SETTINGS)) setSetting(db, k, v);
   setSetting(db, 'clinic_phone', '0212 555');
+  setSetting(db, 'sms_provider', 'testok');
   for (const [k, v] of Object.entries(settings)) setSetting(db, k, v);
   return { id, db };
 }
@@ -54,7 +61,7 @@ describe('processClinic', () => {
     assert.equal(rows.length, 1);
     assert.equal(rows[0].kind, 'reminder');
     assert.equal(rows[0].status, 'sent');
-    assert.equal(rows[0].provider, 'console');
+    assert.equal(rows[0].provider, 'testok');
     assert.equal(rows[0].reminder_id, reminderId);
     assert.equal(rows[0].owner_id, ownerId);
     assert.equal(rows[0].pet_id, petId);
@@ -286,5 +293,47 @@ describe('hatırlatma deneme sayacı', () => {
     assert.deepEqual(await processClinic(id, NOW), { sent: 0, failed: 0, skipped: 0 });
     assert.equal(smsRows(db).length, 3);
     assert.ok(smsRows(db).every((s) => s.status === 'failed'));
+  });
+
+  test('kayıtlı body_override geçersizse şablon gönderilmez; deneme sayılır, last_error yazılır, 3. denemede failed', async () => {
+    const { id, db } = newClinic();
+    const { reminderId, petId } = addCase(db, { repeat: 365 });
+    reminders.setBodyOverride(db, reminderId, 'MERSIS:1 Iptal: x'); // kuyruğu taklit eden gövde -> bodyProblems
+    const res = await processClinic(id, NOW);
+    assert.deepEqual(res, { sent: 0, failed: 1, skipped: 0 });
+    assert.equal(smsRows(db).length, 0, 'SMS gönderilmedi');
+    let r = reminders.get(db, reminderId);
+    assert.equal(r.status, 'pending');
+    assert.equal(r.attempts, 1);
+    assert.match(r.last_error, /^Kayıtlı düzenlenmiş gövde geçersiz: /);
+    assert.ok(r.last_attempt_at, 'deneme zamanı geri alınmadı');
+    assert.equal(r.body_override, 'MERSIS:1 Iptal: x', 'kayıtlı gövde sessizce silinmez');
+    // 4 saat içinde tekrar denenmez (takılı kalan yeniden deneme döngüsü yok)
+    assert.deepEqual(await processClinic(id, NOW), { sent: 0, failed: 0, skipped: 1 });
+    // doğrudan çağrı (bodyOverride undefined) da aynı yolu izler
+    for (let i = 2; i <= 3; i++) {
+      const direct = await sendReminderSms(id, db, getSettings(db), reminders.get(db, reminderId), 'zamanlayici', NOW);
+      assert.equal(direct.ok, false);
+      assert.equal(direct.skipped, undefined);
+      assert.equal(reminders.get(db, reminderId).attempts, i);
+    }
+    r = reminders.get(db, reminderId);
+    assert.equal(r.status, 'failed');
+    assert.equal(smsRows(db).length, 0);
+    // kalıcı başarısızlık tekrar serisini bitirmez
+    const all = db.prepare('SELECT * FROM reminders WHERE pet_id = ? ORDER BY id').all(petId);
+    assert.equal(all.length, 2);
+    assert.equal(all[1].status, 'pending');
+  });
+
+  test('elle verilen geçersiz gövde: deneme sayılmaz, iz geri alınır (skipped invalid)', async () => {
+    const { id, db } = newClinic();
+    const { reminderId } = addCase(db);
+    const res = await sendReminderSms(id, db, getSettings(db), reminders.get(db, reminderId), 'test@x', NOW, { bodyOverride: 'MERSIS:1 Iptal: x' });
+    assert.equal(res.skipped, 'invalid');
+    const r = reminders.get(db, reminderId);
+    assert.equal(r.attempts, 0);
+    assert.equal(r.last_attempt_at, null);
+    assert.equal(smsRows(db).length, 0);
   });
 });

@@ -3,9 +3,10 @@
   const _fv = (typeof assetV === 'string') ? assetV : '';
   const _fi = (typeof icon === 'function') ? icon : () => '';
   const _fp = (typeof currentPath === 'string') ? currentPath : '';
-  const _ftab = (p, label, ic, extra) => {
+  // tour: karşılama turu kancası (data-tour; header.ejs'teki aynı adlar, mobilde bu sekmeler hedeflenir)
+  const _ftab = (p, label, ic, extra, tour) => {
     const on = _fp === p || !!(extra && extra.some((x) => _fp.startsWith(x)));
-    return `<a href="${p}" class="tab-link${on ? ' active' : ''}"${on ? ' aria-current="page"' : ''}>${_fi(ic)}<span>${label}</span></a>`;
+    return `<a href="${p}" class="tab-link${on ? ' active' : ''}"${on ? ' aria-current="page"' : ''}${tour ? ` data-tour="${tour}"` : ''}>${_fi(ic)}<span>${label}</span></a>`;
   };
 %>
 </main>
@@ -26,9 +27,9 @@
 <% if (_fu.clinicId) { %>
 <nav class="tabbar" aria-label="Hızlı erişim">
   <%- _ftab('/', 'Özet', 'home') %>
-  <%- _ftab('/hatirlatmalar', 'Hatırlatma', 'bell', ['/hatirlatmalar']) %>
-  <a href="/hizli-kayit" class="tab-link tab-cta<%= _fp === '/hizli-kayit' ? ' active' : '' %>"<%- _fp === '/hizli-kayit' ? ' aria-current="page"' : '' %>><%- _fi('plus') %><span>Kayıt</span></a>
-  <%- _ftab('/sahipler', 'Sahipler', 'users', ['/sahipler', '/hayvanlar']) %>
+  <%- _ftab('/hatirlatmalar', 'Hatırlatma', 'bell', ['/hatirlatmalar'], 'hatirlatmalar') %>
+  <a href="/hizli-kayit" class="tab-link tab-cta<%= _fp === '/hizli-kayit' ? ' active' : '' %>"<%- _fp === '/hizli-kayit' ? ' aria-current="page"' : '' %> data-tour="hizli-kayit"><%- _fi('plus') %><span>Kayıt</span></a>
+  <%- _ftab('/sahipler', 'Sahipler', 'users', ['/sahipler', '/hayvanlar'], 'sahipler') %>
   <button type="button" class="tab-link nav-toggle" aria-expanded="false" aria-controls="site-nav"><%- _fi('menu') %><span>Menü</span></button>
 </nav>
 <% } %>
@@ -37,5 +38,6 @@
 <% } %>
 <script src="/static/app.js<%= _fv ? '?v=' + _fv : '' %>"></script>
 <script src="/static/pwa.js" defer></script>
+<script src="/static/tour.js?v=<%= _fv %>" defer></script>
 </body>
 </html>

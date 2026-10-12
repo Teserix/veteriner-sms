@@ -23,6 +23,36 @@ function freshDb(name) {
 }
 
 describe('tenant migrasyonları', () => {
+  test("migrasyon 5: sms_log 'simulated' kabul eder; mevcut satırlar, dizinler korunur; reminders.simulated_at", () => {
+    const db = freshDb('t5.db');
+    migrate(db, TENANT_MIGRATIONS.slice(0, 4)); // eski şema (v4)
+    assert.equal(userVersion(db), 4);
+    const ins = db.prepare(`INSERT INTO sms_log (owner_id, phone, message, provider, status, provider_ref, created_at, owner_name, kind, legal_basis, iys_flag, identity_used)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    ins.run(7, '905321234567', 'm1', 'netgsm', 'sent', 'r1', '2026-09-01T10:00:00Z', 'A', 'reminder', 'm6_1', '0', 'MERSIS:1');
+    ins.run(8, '905321234568', 'm2', 'netgsm', 'failed', null, '2026-09-02T10:00:00Z', 'B', 'test', 'test', '0', null);
+    assert.throws(() => ins.run(9, '9053', 'x', 'console', 'simulated', null, '2026-09-03T00:00:00Z', null, 'reminder', null, null, null), /CHECK/);
+    const before = db.prepare('SELECT * FROM sms_log ORDER BY id').all();
+    migrate(db, TENANT_MIGRATIONS);
+    assert.equal(userVersion(db), TENANT_MIGRATIONS.length);
+    assert.deepEqual(db.prepare('SELECT * FROM sms_log ORDER BY id').all(), before);
+    ins.run(9, '905321234569', 'm3', 'console', 'simulated', null, '2026-09-03T10:00:00Z', 'C', 'reminder', 'm6_1', '0', null);
+    assert.throws(() => ins.run(9, '905321234569', 'm4', 'console', 'gonderildi', null, '2026-09-03T10:00:00Z', 'C', 'reminder', null, null, null), /CHECK/);
+    // AUTOINCREMENT sırası korunur (yeni satır eski en büyük id'den sonra)
+    assert.equal(db.prepare("SELECT id FROM sms_log WHERE message = 'm3'").get().id, 3);
+    const idx = db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'sms_log'").all().map((r) => r.name);
+    for (const n of ['idx_sms_created', 'idx_sms_kind_created', 'idx_sms_owner']) assert.ok(idx.includes(n), n);
+    assert.ok(!tables(db).includes('sms_log_v5'));
+    assert.ok(columns(db, 'reminders').includes('simulated_at'));
+    // idempotent: tekrar çalıştırma şemayı ve veriyi değiştirmez
+    const schema = db.prepare('SELECT sql FROM sqlite_master ORDER BY name').all();
+    migrate(db, TENANT_MIGRATIONS);
+    assert.deepEqual(db.prepare('SELECT sql FROM sqlite_master ORDER BY name').all(), schema);
+    assert.equal(db.prepare('SELECT COUNT(*) AS c FROM sms_log').get().c, 3);
+    assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+    db.close();
+  });
+
   test('sıfırdan uygular: user_version ve sütunlar', () => {
     const db = freshDb('t1.db');
     assert.equal(userVersion(db), 0);

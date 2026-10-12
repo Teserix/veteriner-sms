@@ -1,0 +1,79 @@
+<%- include('partials/header') %>
+<%
+  // SMS önizleme ve gövde düzenleme (işlevsel iskelet; stil + istemci sayacı 3. alt işte gelir).
+  // Metin parçaları sunucuda policy.previewParts ile üretilir; gönderimle aynı fonksiyon.
+  // Sınıflar / data-* öznitelikleri (public/app.js ve CSS için sözleşme):
+  //   .sms-preview            : ekranın kapsayıcısı
+  //   .sms-preview-blockers   : gönderimi engelleyen durumlar için uyarı bandı (varsa düğme devre dışı)
+  //   .sms-saved-override     : kayıtlı düzenlenmiş gövde açıldığında bilgi bandı (data-original yine şablondur);
+  //                             kayıtlı gövde geçersizse role=alert ve "gönderilemez" der (sorun listesi ayrı bantta)
+  //   .sms-fixed              : salt okunur parçalar (önek, kimlik satırı, iptal satırı); input değil, metin
+  //     .sms-prefix / .sms-identity / .sms-optout
+  //   textarea[data-sms-body] : düzenlenebilir tek alan (name="body"), maxlength = MAX_BODY_LENGTH
+  //     data-prefix           : sistemce eklenen önek ("Bilgilendirme: ")
+  //     data-tail             : gövdeden sonra eklenen kuyruk (" <kimlik> <iptal>"; baştaki boşluk dahil)
+  //     data-max-total        : önek + gövde + kuyruk için üst sınır (MAX_MESSAGE_LENGTH)
+  //     data-original         : şablondan çıkan orijinal gövde ("Orijinale dön" için)
+  //     data-server-blocked   : "1" ise gönderim gövdeden bağımsız engelli (blockers); istemci Gönder'i asla açmaz
+  //     data-invalid-body     : "1" ise sunucu bu gövdeyi geçersiz buldu (bodyProblems); gövde bu ilk değerdeyken
+  //                             Gönder kapalı kalır, kullanıcı değiştirince istemci denetimi geçer (POST'ta yine sunucu)
+  //   button[type=submit]     : canSend = blokaj yok VE gövde sorunu yok. HTML'de yalnız blokaj varken (submitDisabled)
+  //                             disabled çizilir; bodyInvalid iken açık çizilir (JS'siz de düzeltip gönderilebilsin),
+  //                             JS ilk ham değerde kapatır, sunucu POST'ta bodyProblems ile yine reddeder
+  //   output[data-sms-counter]: canlı karakter/parça sayacı; JS yoksa sunucunun hesapladığı ilk değer görünür
+  //   a[data-sms-reset]       : "Orijinale dön" bağlantısı (?orijinal=1); JS yoksa sunucu kayıtlı gövdeyi yok sayıp
+  //                             şablon gövdesini yükler (DB'ye dokunmaz). JS varken tıklama yerinde data-original'a
+  //                             döndürür; gövde zaten orijinalse aria-disabled="true" + .is-disabled + tabindex="-1"
+  //                             alır (sunucu ilk çizimde bodySame ile, istemci her girişte)
+  //   .sms-full               : gönderilecek tam metin (sunucu hesabı)
+  const seg = parts.segments;
+  const tail = [parts.identity, parts.optOut].filter(Boolean).join(' ');
+  // Sayaç metni public/app.js smsCounterText ile aynı biçimdedir (JS kapalıyken de doğru ilk değer görünür).
+  const encLabel = seg.encoding === 'gsm7' ? 'GSM-7' : (seg.encoding === 'gsm7tr' ? 'GSM-7 Türkçe' : 'Türkçe (UCS-2)');
+  const overLimit = parts.full.length > maxTotal;
+%>
+<a class="back-link" href="/sahipler/<%= reminder.owner_id %>"><%- icon('arrow-left') %><%= reminder.owner_name %></a>
+<div class="page-head">
+  <div><h1>SMS önizleme</h1><p class="sub"><%= reminder.pet_name %> · <%= reminder.title %> · <%= formatDate(reminder.due_date) %></p></div>
+</div>
+<div class="card form-card sms-preview">
+  <% if (blockers.length) { %>
+  <div class="flash err sms-preview-blockers" role="alert"><%- icon('alert') %><span><% for (const m of blockers) { %><%= m %> <% } %></span></div>
+  <% } %>
+  <% if (problems.length) { %>
+  <div class="flash err" role="alert"><%- icon('alert') %><span><% for (const m of problems) { %><%= m %> <% } %></span></div>
+  <% } %>
+  <form method="post" action="/hatirlatmalar/<%= reminder.id %>/gonder">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <div class="sms-editor">
+      <% if (typeof savedOverride !== 'undefined' && savedOverride) { %>
+      <% if (bodyInvalid) { %>
+      <div class="alert warn sms-saved-override" role="alert"><%- icon('alert') %><span>Bu hatırlatma için kayıtlı düzenlenmiş gövde geçersiz; bu haliyle gönderilemez ve zamanlayıcı da göndermez. Gövdeyi düzeltin ya da "Orijinale dön"e basın.</span></div>
+      <% } else { %>
+      <div class="alert warn sms-saved-override" role="status"><%- icon('alert') %><span>Bu hatırlatma için daha önce düzenlenmiş bir gövde kayıtlı; gönderimde bu metin kullanılır. Şablona dönmek için "Orijinale dön"e basın.</span></div>
+      <% } %>
+      <% } %>
+      <div class="sms-fixed sms-prefix" title="Sistem tarafından eklenir"><%- icon('shield', 'sms-lock') %><span><%= parts.prefix %></span><span class="sms-fixed-tag">Sabit</span></div>
+      <label for="sms-body">Mesaj gövdesi <span class="sms-label-note">yalnız bu kısım düzenlenebilir</span></label>
+      <textarea id="sms-body" name="body" rows="5" maxlength="<%= parts.maxBodyLength %>" data-sms-body
+        data-prefix="<%= parts.prefix %>" data-tail="<%= tail ? ' ' + tail : '' %>" data-max-total="<%= maxTotal %>"
+        data-original="<%= parts.originalBodyOneLine %>" data-tr-shift="<%= parts.turkishShift ? 1 : 0 %>" data-server-blocked="<%= blockers.length ? 1 : 0 %>"<% if (bodyInvalid) { %> data-invalid-body="1" aria-invalid="true"<% } %> aria-describedby="sms-counter sms-lock-help" spellcheck="true" autocapitalize="sentences"><%= bodyValue %></textarea>
+      <div class="sms-counter-row">
+        <output id="sms-counter" class="sms-counter<%= overLimit ? ' is-over' : '' %>" data-sms-counter for="sms-body" aria-live="polite"><%= parts.full.length %> karakter · <%= seg.segments %> SMS parçası · <%= encLabel %> · parçada kalan <%= seg.remainingInSegment %></output>
+        <span class="sms-counter-max">Üst sınır <%= maxTotal %></span>
+      </div>
+      <div class="sms-fixed sms-identity<%= parts.identity ? '' : ' is-missing' %>" title="Sistem tarafından eklenir"><%- icon('shield', 'sms-lock') %><span><%= parts.identity || 'Kimlik satırı eksik (Ayarlar > Hukuki kimlik)' %></span><span class="sms-fixed-tag">Sabit</span></div>
+      <div class="sms-fixed sms-optout" title="Sistem tarafından eklenir"><%- icon('shield', 'sms-lock') %><span><%= parts.optOut %></span><span class="sms-fixed-tag">Sabit</span></div>
+      <div class="help" id="sms-lock-help">Kimlik ve iptal satırları yasal zorunluluktur; sistem tarafından eklenir, değiştirilemez.</div>
+    </div>
+    <section class="sms-full-wrap" aria-labelledby="sms-full-title">
+      <h2 id="sms-full-title">Gönderilecek tam metin</h2>
+      <p class="sms-full"><%= parts.full %></p>
+    </section>
+    <div class="form-actions">
+      <button class="btn" type="submit" <%= submitDisabled ? 'disabled' : '' %>><%- icon('send') %>Gönder</button>
+      <a class="btn secondary<%= bodySame ? ' is-disabled' : '' %>" href="/hatirlatmalar/<%= reminder.id %>/onizle?orijinal=1" data-sms-reset<% if (bodySame) { %> aria-disabled="true" tabindex="-1"<% } %>>Orijinale dön</a>
+    </div>
+  </form>
+</div>
+<%- include('partials/footer') %>

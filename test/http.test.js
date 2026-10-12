@@ -6,7 +6,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { setupEnv, startApp, createClient, createSuperadmin, csrfOf, resetLoginLimiter, acceptLegal } from './helpers.js';
+import { setupEnv, startApp, createClient, createSuperadmin, csrfOf, resetLoginLimiter, acceptLegal, testFetch } from './helpers.js';
 
 const dataDir = setupEnv();
 const { todayLocal } = await import('../src/util.js');
@@ -29,11 +29,11 @@ before(async () => {
 after(async () => { console.log = origLog; await app.close(); });
 
 test('ops: /api/health ve /api/version JSON', async () => {
-  const h = await fetch(app.base + '/api/health');
+  const h = await testFetch(app.base + '/api/health');
   assert.equal(h.status, 200);
   assert.match(h.headers.get('content-type'), /application\/json/);
   assert.deepEqual(await h.json(), { ok: true });
-  const v = await fetch(app.base + '/api/version');
+  const v = await testFetch(app.base + '/api/version');
   assert.equal(v.status, 200);
   const body = await v.json();
   assert.equal(body.name, 'veteriner-sms');
@@ -148,16 +148,69 @@ test('ek) CSV dışa aktarma (yönetici): BOM, başlık ve sahip satırı', asyn
   assert.ok(lines[2].startsWith('Mehmet Kaya;0532 123 45 67;;;Evet;Zeytin;Köpek;'));
 });
 
+test('ek) sade rozetler: Bekliyor rozeti yok, istisnalar renkli, 7 gün listesinde rozet yok', async () => {
+  const { openTenant } = await import('../src/db/tenant.js');
+  const today = todayLocal();
+  const in3 = new Date(Date.parse(today + 'T00:00:00Z') + 3 * 86400000).toISOString().slice(0, 10);
+  let r = await c.post('/hizli-kayit', { _csrf: csrf, owner_name: 'Ali Demir', phone: '0533 765 43 21', pet_name: 'Karabaş', species: 'Köpek', add_reminder: '1', type: 'asi', title: 'Karma aşı', due_date: today, notify_days_before: '0', sms_opt_in: '1' });
+  assert.equal(r.status, 302);
+  r = await c.post('/hizli-kayit', { _csrf: csrf, owner_name: 'Ali Demir', phone: '05337654321', pet_name: 'Pamuk', species: 'Kedi', add_reminder: '1', type: 'asi', title: 'İç parazit', due_date: in3, notify_days_before: '0', sms_opt_in: '1' });
+  assert.equal(r.status, 302);
+  const db = openTenant(clinicId);
+  const failedRow = db.prepare("SELECT r.id, p.owner_id FROM reminders r JOIN pets p ON p.id = r.pet_id WHERE r.title = 'Karma aşı'").get();
+  db.prepare("UPDATE reminders SET status = 'failed', attempts = 3, last_error = 'test hatası' WHERE id = ?").run(failedRow.id);
+  try {
+    // (a) bekleyen hatırlatma: sahip detayında ve ana sayfada 'Bekliyor' rozeti basılmaz
+    r = await c.get('/sahipler/1');
+    assert.ok(r.text.includes('Kuduz aşısı'));
+    assert.ok(!r.text.includes('class="badge pending"'));
+    r = await c.get('/');
+    assert.ok(!r.text.includes('class="badge pending"'));
+    // (b) istisna durum renkli kalır
+    assert.ok(r.text.includes('badge failed'));
+    r = await c.get('/sahipler/' + failedRow.owner_id);
+    assert.ok(r.text.includes('badge failed'));
+    // (c) 'Önümüzdeki 7 gün' bölümünde durum rozeti yok
+    r = await c.get('/');
+    const week = r.text.slice(r.text.indexOf('id="h-hafta"'), r.text.indexOf('</section>', r.text.indexOf('id="h-hafta"')));
+    assert.ok(week.includes('Pamuk'), 'yaklaşan hatırlatma listede');
+    assert.ok(!week.includes('class="badge'));
+    // sayı rozeti 0 iken gösterilmez (yarın listesi boş)
+    const tomorrowHead = r.text.slice(r.text.indexOf('id="h-yarin"'), r.text.indexOf('</h2>', r.text.indexOf('id="h-yarin"')));
+    assert.ok(!tomorrowHead.includes('count-pill'));
+  } finally {
+    db.prepare("UPDATE reminders SET status = 'done' WHERE pet_id IN (SELECT id FROM pets WHERE owner_id = ?)").run(failedRow.owner_id);
+  }
+});
+
+test('ek) PWA kurulum satırı: nötr metin düğmesi ve erişilebilir kapat', () => {
+  const js = fs.readFileSync(new URL('../public/pwa.js', import.meta.url), 'utf8');
+  assert.ok(js.includes('Uygulamayı yükle'));
+  assert.ok(js.includes("setAttribute('aria-label', 'Kapat')"));
+  assert.ok(js.includes('pwa-install-line'));
+  assert.ok(!js.includes('Uygulamayı ana ekranınıza ekleyebilirsiniz'));
+  assert.ok(!/installBanner = showBanner/.test(js), 'kurulum ipucu sarı bant (warnbox) kullanmaz');
+  assert.ok(!js.includes("'role', 'alert'"));
+  // Duyuru içerikten gelsin: aria-label adı .pwa-text metnini (iOS yönergesi dahil) gölgelemez.
+  assert.ok(!js.includes("'aria-label', 'Uygulamayı yükleme önerisi'"));
+  assert.ok(js.includes("box.setAttribute('role', 'status')"));
+  assert.ok(js.includes("msg.className = 'pwa-text'"));
+  const css = fs.readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
+  assert.ok(css.includes('.pwa-install-line'));
+  assert.ok(css.includes('.btn.is-disabled'));
+});
+
 test('7) elle gönderim; SMS geçmişi; ikinci gönderim engellenir', async () => {
+  // SMS_MODE live değil (test ortamı): gönderim simüle edilir, kullanıcıya açıkça söylenir, hatırlatma açık kalır
   let r = await c.post('/hatirlatmalar/1/gonder', { _csrf: csrf }, { referer: app.base + '/sahipler/1?ok=x' });
   assert.equal(r.status, 302);
-  assert.ok(r.location.startsWith('/sahipler/1?ok='), r.location);
+  assert.ok(r.location.startsWith('/sahipler/1?err='), r.location);
+  assert.ok(decodeURIComponent(r.location.replace(/\+/g, ' ')).includes('simüle edildi, gönderilmedi'), r.location);
   assert.ok(!r.location.includes('ok=x'));
   r = await c.get('/sms');
   assert.equal(r.status, 200);
-  assert.ok(r.text.includes('Gönderildi') && r.text.includes('Mehmet Kaya'));
-  r = await c.post('/hatirlatmalar/1/gonder', { _csrf: csrf });
-  assert.ok(r.location.includes('err='), r.location);
+  assert.ok(r.text.includes('Simüle edildi (gönderilmedi)') && r.text.includes('Mehmet Kaya'));
+  assert.ok(!r.text.includes('>Gönderildi<'));
 });
 
 test('8) açık yönlendirme koruması', async () => {
@@ -186,7 +239,7 @@ test('9) ayarlar: kaydet, kimlik bilgisi, test SMS ve günlük tavan', async () 
   r = await c.post('/ayarlar', { _csrf: csrf, clinic_name: 'Pati', clinic_phone: '0212', template: 'x', scheduler_enabled: '1', send_hour_start: '9', send_hour_end: '20', daily_sms_limit: '2', sms_provider: 'console', sms_sender: '', legal_form: 'tacir', mersis_no: '0123456789012345' });
   assert.equal(r.status, 302);
   r = await c.post('/ayarlar/test', { _csrf: csrf, phone: '05001112233' });
-  assert.ok(r.location.includes('ok='), r.location);
+  assert.ok(r.location.includes('err=') && decodeURIComponent(r.location.replace(/\+/g, ' ')).includes('simüle edildi, gönderilmedi'), r.location);
   r = await c.post('/ayarlar/test', { _csrf: csrf, phone: '05001112233' });
   assert.ok(r.location.includes('err='), r.location);
   assert.ok(decodeURIComponent(r.location).includes('sınır'), decodeURIComponent(r.location));

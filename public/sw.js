@@ -15,7 +15,7 @@
  * Önbellekte hiçbir zaman kişisel veri bulunmaz; yalnızca uygulama kabuğu.
  */
 
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v5';
 const STATIC_CACHE = `vetsms-static-${CACHE_VERSION}`;
 const OFFLINE_URL = '/static/offline.html';
 
@@ -24,6 +24,7 @@ const SHELL_ASSETS = [
   '/static/style.css',
   '/static/app.js',
   '/static/pwa.js',
+  '/static/tour.js',
   OFFLINE_URL,
   '/static/icons/favicon.svg',
   '/static/icons/sprite.svg',
@@ -128,12 +129,17 @@ async function networkOnlyWithOfflineFallback(request) {
  */
 async function staleWhileRevalidate(request) {
   const cache = await caches.open(STATIC_CACHE);
-  const cached = await cache.match(request);
+  // ?v=<özet> sorgusu sürüm ipucudur; kurulumda sorgusuz eklenen kabuk kopyası da eşleşsin.
+  const cached = await cache.match(request, { ignoreSearch: true });
 
-  const network = fetch(request)
+  // HTTP önbelleğini (/static maxAge) atla: tazeleme gerçekten sunucuya gitsin.
+  const network = fetch(request, { cache: 'reload' })
     .then((response) => {
       if (response && response.ok && response.type === 'basic') {
-        cache.put(request, response.clone()).catch(() => {});
+        // Sorgusuz anahtarla yaz: aynı varlığın ?v= kopyaları birikmesin.
+        const url = new URL(request.url);
+        url.search = '';
+        cache.put(url.href, response.clone()).catch(() => {});
       }
       return response;
     })

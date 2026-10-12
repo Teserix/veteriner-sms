@@ -1,10 +1,13 @@
 import { Router } from 'express';
 import { requireRole } from '../auth.js';
-import { pets, reminders, getSettings } from '../db/tenant.js';
-import { sendReminderSms } from '../scheduler.js';
-import { contentProblems } from '../sms/policy.js';
+import { pets, reminders, getSettings, legalProblems } from '../db/tenant.js';
+import { sendReminderSms, buildReminderVars, ensureOptOutToken } from '../scheduler.js';
+import { contentProblems, previewParts, bodyProblems, smsSegments, usesTurkishShift, sameBody } from '../sms/policy.js';
 import { limiters } from '../ratelimit.js';
-import { trim, toInt, nowIso, isValidDate, todayLocal, addDays, returnTo, withFlash, REMINDER_TYPES } from '../util.js';
+import { MAX_MESSAGE_LENGTH } from '../sms/index.js';
+import { audit } from '../audit.js';
+import { randomId } from '../crypto.js';
+import { trim, toInt, nowIso, isValidDate, todayLocal, addDays, returnTo, withFlash, isDemoPhone, REMINDER_TYPES } from '../util.js';
 
 export const remindersRouter = Router();
 
@@ -109,21 +112,107 @@ remindersRouter.post('/hatirlatmalar/:id/sil', requireRole('admin'), (req, res) 
   res.redirect(`/sahipler/${r.owner_id}?ok=` + encodeURIComponent('Hatırlatma silindi.'));
 });
 
-/** Elle "şimdi gönder" */
+const CLOSED_STATUSES = ['sent', 'done', 'cancelled'];
+
+/** Gönderimi engelleyecek durumlar (önizlemede uyarı bandı + devre dışı düğme; sunucu korumaları yine ayrıca geçerlidir) */
+function sendBlockers(settings, r) {
+  const out = [];
+  if (!r.sms_opt_in) out.push('Bu hasta sahibi SMS almak istemiyor (ret kaydı var).');
+  if (isDemoPhone(r.owner_phone)) out.push('Bu bir demo numarası; SMS hiçbir sağlayıcıya gönderilmez.');
+  const legal = legalProblems(settings);
+  if (legal.length) out.push('Gönderim kilitli: Ayarlar > Hukuki kimlik eksik (' + legal[0] + ').');
+  if (CLOSED_STATUSES.includes(r.status)) out.push('Bu hatırlatma için SMS zaten gönderilmiş ya da kapatılmış.');
+  return out;
+}
+
+/** Önizleme ekranının modeli: mesaj policy.previewParts'tan gelir (gönderimle aynı fonksiyon); rotada yeniden kurulmaz */
+// savedOverride: gövde hatırlatmada kayıtlı düzenlenmiş gövdedir (bilgi bandı); data-original yine şablondan gelir
+// Gönder HTML'de yalnız blokajda kapalı çizilir (submitDisabled); gövde geçersizse (problems) açık kalır ki JS'siz de
+// düzeltip gönderilebilsin. bodyInvalid istemciye ilk ham gövdede kilitlemesini söyler; POST'ta bodyProblems son sözdür
+// bodySame: gövde şablonla aynı ("Orijinale dön" etkisiz: aria-disabled + tabindex=-1)
+function renderPreview(req, res, r, settings, { body, problems = [], status = 200, savedOverride = false } = {}) {
+  const parts = previewParts(settings, buildReminderVars(settings, r), {
+    clinicId: req.user.clinicId, optOutToken: r.opt_out_token || '', bodyOverride: body,
+  });
+  const blockers = sendBlockers(settings, r);
+  res.status(status).render('reminder_preview', {
+    title: 'SMS önizleme', reminder: r, parts, problems, blockers,
+    canSend: blockers.length === 0 && problems.length === 0, bodyInvalid: problems.length > 0,
+    submitDisabled: blockers.length > 0, bodySame: body == null || sameBody(body, parts.originalBody),
+    bodyValue: body ?? parts.originalBodyOneLine, maxTotal: MAX_MESSAGE_LENGTH, savedOverride,
+  });
+}
+
+/**
+ * Gönderim öncesi tam önizleme. GET yan etkisizdir: ret belirteci yoksa veritabanına YAZILMAZ; önizlemede aynı uzunlukta,
+ * kalıcı olmayan geçici bir belirteç kullanılır (uzunluk/parça hesabı doğru kalır). Gerçek belirteç gönderimde
+ * (POST /gonder, sendReminderSms -> ensureOptOutToken) üretilir.
+ * Kayıtlı düzenlenmiş gövde (body_override, örn. başarısız gönderimden kalan) varsa o açılır; form onu POST ettiği için
+ * gönderimde sessizce kaybolmaz. Sonradan geçersizleşmişse sorunlar listelenir (zamanlayıcı da onu göndermez).
+ * ?orijinal=1 ("Orijinale dön", JS kapalıyken de çalışır): kayıtlı gövde yok sayılıp şablon gövdesi açılır.
+ * body_override'a dokunulmaz; kullanıcı şablonla Gönder'e basarsa POST sameBody ile şablonu gönderir.
+ * Geri dönüş adresi Referer'dan gelir (returnTo); taşınacak bir sorgu parametresi yoktur.
+ */
+remindersRouter.get('/hatirlatmalar/:id/onizle', (req, res) => {
+  const r = reminders.get(req.db, toInt(req.params.id));
+  if (!r) return notFound(res);
+  if (!r.opt_out_token) r.opt_out_token = randomId(16); // yalnız bu yanıt için; kaydedilmez
+  const settings = getSettings(req.db);
+  const saved = r.body_override;
+  if (req.query.orijinal === '1' || saved == null || saved === '') return renderPreview(req, res, r, settings);
+  const optOpts = { clinicId: req.user.clinicId, optOutToken: r.opt_out_token };
+  const original = previewParts(settings, buildReminderVars(settings, r), optOpts).originalBody;
+  if (sameBody(saved, original)) return renderPreview(req, res, r, settings);
+  renderPreview(req, res, r, settings, { body: saved, savedOverride: true, problems: bodyProblems(saved, settings, optOpts) });
+});
+
+/** Elle "şimdi gönder"; isteğe bağlı 'body' alanı önizlemede düzenlenmiş gövdedir (önek/kimlik/iptal sunucuda eklenir) */
 remindersRouter.post('/hatirlatmalar/:id/gonder', limiters.manualSms.middleware((req) => 'c:' + req.user.clinicId, 'Saatte en fazla 30 elle gönderim yapılabilir.'), async (req, res) => {
   let r = reminders.get(req.db, toInt(req.params.id));
   if (!r) return notFound(res);
-  const back = returnTo(req, `/sahipler/${r.owner_id}`);
+  let back = returnTo(req, `/sahipler/${r.owner_id}`);
+  // Önizleme ya da 400 sonrası /gonder adresi (GET rotası yok) geri dönüş hedefi olamaz
+  if (back.startsWith(`/hatirlatmalar/${r.id}/`)) back = `/sahipler/${r.owner_id}`;
   if (!r.sms_opt_in) return res.redirect(withFlash(back, 'err', 'Bu hasta sahibi SMS almak istemiyor.'));
-  if (r.status === 'sent' || r.status === 'done' || r.status === 'cancelled') {
+  if (CLOSED_STATUSES.includes(r.status)) {
     return res.redirect(withFlash(back, 'err', 'Bu hatırlatma için SMS zaten gönderilmiş ya da kapatılmış.'));
   }
+  const settings = getSettings(req.db);
+  const clinicId = req.user.clinicId;
+
+  // Gövde alanı geldiyse: şablondan çıkanla aynıysa (boşluk farkı hariç) şablon olduğu gibi gönderilir (uzun/çok satırlı
+  // şablon da); farklıysa önce burada denetlenir (400 + önizleme), sonra kilit içinde taze kayıtla yeniden karşılaştırılır.
+  let bodyOverride;
+  if (typeof req.body.body === 'string') {
+    r.opt_out_token = ensureOptOutToken(req.db, r.owner_id, r.opt_out_token);
+    const original = previewParts(settings, buildReminderVars(settings, r), { clinicId, optOutToken: r.opt_out_token }).originalBody;
+    if (!sameBody(req.body.body, original)) {
+      const problems = bodyProblems(req.body.body, settings, { clinicId, optOutToken: r.opt_out_token });
+      if (problems.length) return renderPreview(req, res, r, settings, { body: req.body.body, problems, status: 400 });
+    }
+    bodyOverride = req.body.body;
+  }
+
   if (r.status === 'failed' || r.attempts > 0) {
     reminders.resetForRetry(req.db, r.id);
     r = reminders.get(req.db, r.id);
   }
-  const settings = getSettings(req.db);
-  const result = await sendReminderSms(req.user.clinicId, req.db, settings, r, req.user.email);
+  const result = await sendReminderSms(clinicId, req.db, settings, r, req.user.email, new Date(), { bodyOverride });
+  if (result.skipped !== 'state') {
+    // Denetim: yalnız uzunluk/parça/bayrak; telefon, sahip adı ve gövde metni yazılmaz
+    // Uzunluklar kilit içinde gönderilen kayıttan hesaplanır (sendReminderSms); bekleme sırasında kayıt değişse de doğru
+    const seg = smsSegments(result.message || '', { turkishShift: usesTurkishShift(settings) });
+    audit(req, 'reminder.sms_send', {
+      clinicId, entityType: 'reminder', entityId: r.id,
+      meta: {
+        edited: !!result.edited, original_length: result.originalLength ?? null, new_length: result.newLength ?? null,
+        segments: seg.segments, encoding: seg.encoding, ok: !!result.ok,
+      },
+    });
+  }
+  if (result.ok && result.simulated) {
+    return res.redirect(withFlash(back, 'err', 'SMS simüle edildi, gönderilmedi (SMS_MODE live değil); hatırlatma açık kaldı: ' + r.owner_name));
+  }
   if (result.ok) return res.redirect(withFlash(back, 'ok', 'SMS gönderildi: ' + r.owner_name));
   res.redirect(withFlash(back, 'err', 'Gönderilemedi: ' + result.error));
 });
