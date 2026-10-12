@@ -125,26 +125,35 @@ function sendBlockers(settings, r) {
 }
 
 /** Önizleme ekranının modeli: mesaj policy.previewParts'tan gelir (gönderimle aynı fonksiyon); rotada yeniden kurulmaz */
-function renderPreview(req, res, r, settings, { body, problems = [], status = 200 } = {}) {
+// savedOverride: gövde hatırlatmada kayıtlı düzenlenmiş gövdedir (bilgi bandı); data-original yine şablondan gelir
+function renderPreview(req, res, r, settings, { body, problems = [], status = 200, savedOverride = false } = {}) {
   const parts = previewParts(settings, buildReminderVars(settings, r), {
     clinicId: req.user.clinicId, optOutToken: r.opt_out_token || '', bodyOverride: body,
   });
   const blockers = sendBlockers(settings, r);
   res.status(status).render('reminder_preview', {
     title: 'SMS önizleme', reminder: r, parts, problems, blockers, canSend: blockers.length === 0,
-    bodyValue: body ?? parts.originalBodyOneLine, maxTotal: MAX_MESSAGE_LENGTH,
+    bodyValue: body ?? parts.originalBodyOneLine, maxTotal: MAX_MESSAGE_LENGTH, savedOverride,
   });
 }
 
 /**
  * Gönderim öncesi tam önizleme. Ret belirteci yoksa burada üretilir (ensureOptOutToken): GET'te yan etkidir ama
  * kabul edildi; böylece önizlenen iptal bağlantısı gönderilecek olanla birebir aynıdır (yer tutucu URL gösterilmez).
+ * Kayıtlı düzenlenmiş gövde (body_override, örn. başarısız gönderimden kalan) varsa o açılır; form onu POST ettiği için
+ * gönderimde sessizce kaybolmaz. Sonradan geçersizleşmişse sorunlar listelenir (zamanlayıcı da onu göndermez).
  */
 remindersRouter.get('/hatirlatmalar/:id/onizle', (req, res) => {
   const r = reminders.get(req.db, toInt(req.params.id));
   if (!r) return notFound(res);
   r.opt_out_token = ensureOptOutToken(req.db, r.owner_id, r.opt_out_token);
-  renderPreview(req, res, r, getSettings(req.db));
+  const settings = getSettings(req.db);
+  const saved = r.body_override;
+  if (saved == null || saved === '') return renderPreview(req, res, r, settings);
+  const optOpts = { clinicId: req.user.clinicId, optOutToken: r.opt_out_token };
+  const original = previewParts(settings, buildReminderVars(settings, r), optOpts).originalBody;
+  if (sameBody(saved, original)) return renderPreview(req, res, r, settings);
+  renderPreview(req, res, r, settings, { body: saved, savedOverride: true, problems: bodyProblems(saved, settings, optOpts) });
 });
 
 /** Elle "şimdi gönder"; isteğe bağlı 'body' alanı önizlemede düzenlenmiş gövdedir (önek/kimlik/iptal sunucuda eklenir) */

@@ -287,4 +287,46 @@ describe('hatırlatma deneme sayacı', () => {
     assert.equal(smsRows(db).length, 3);
     assert.ok(smsRows(db).every((s) => s.status === 'failed'));
   });
+
+  test('kayıtlı body_override geçersizse şablon gönderilmez; deneme sayılır, last_error yazılır, 3. denemede failed', async () => {
+    const { id, db } = newClinic();
+    const { reminderId, petId } = addCase(db, { repeat: 365 });
+    reminders.setBodyOverride(db, reminderId, 'MERSIS:1 Iptal: x'); // kuyruğu taklit eden gövde -> bodyProblems
+    const res = await processClinic(id, NOW);
+    assert.deepEqual(res, { sent: 0, failed: 1, skipped: 0 });
+    assert.equal(smsRows(db).length, 0, 'SMS gönderilmedi');
+    let r = reminders.get(db, reminderId);
+    assert.equal(r.status, 'pending');
+    assert.equal(r.attempts, 1);
+    assert.match(r.last_error, /^Kayıtlı düzenlenmiş gövde geçersiz: /);
+    assert.ok(r.last_attempt_at, 'deneme zamanı geri alınmadı');
+    assert.equal(r.body_override, 'MERSIS:1 Iptal: x', 'kayıtlı gövde sessizce silinmez');
+    // 4 saat içinde tekrar denenmez (takılı kalan yeniden deneme döngüsü yok)
+    assert.deepEqual(await processClinic(id, NOW), { sent: 0, failed: 0, skipped: 1 });
+    // doğrudan çağrı (bodyOverride undefined) da aynı yolu izler
+    for (let i = 2; i <= 3; i++) {
+      const direct = await sendReminderSms(id, db, getSettings(db), reminders.get(db, reminderId), 'zamanlayici', NOW);
+      assert.equal(direct.ok, false);
+      assert.equal(direct.skipped, undefined);
+      assert.equal(reminders.get(db, reminderId).attempts, i);
+    }
+    r = reminders.get(db, reminderId);
+    assert.equal(r.status, 'failed');
+    assert.equal(smsRows(db).length, 0);
+    // kalıcı başarısızlık tekrar serisini bitirmez
+    const all = db.prepare('SELECT * FROM reminders WHERE pet_id = ? ORDER BY id').all(petId);
+    assert.equal(all.length, 2);
+    assert.equal(all[1].status, 'pending');
+  });
+
+  test('elle verilen geçersiz gövde: deneme sayılmaz, iz geri alınır (skipped invalid)', async () => {
+    const { id, db } = newClinic();
+    const { reminderId } = addCase(db);
+    const res = await sendReminderSms(id, db, getSettings(db), reminders.get(db, reminderId), 'test@x', NOW, { bodyOverride: 'MERSIS:1 Iptal: x' });
+    assert.equal(res.skipped, 'invalid');
+    const r = reminders.get(db, reminderId);
+    assert.equal(r.attempts, 0);
+    assert.equal(r.last_attempt_at, null);
+    assert.equal(smsRows(db).length, 0);
+  });
 });
