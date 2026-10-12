@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { setupEnv, LEGAL_SETTINGS } from './helpers.js';
 
 setupEnv();
+process.env.SMS_MODE = 'live'; // bu dosya sahte sağlayıcılarla gerçek gönderim yolunu sınar (ağ çağrısı yok)
 const { previewParts, composeFromTemplate, bodyProblems, hasMandatoryTail, smsSegments, SMS_LIMITS, composeMessage } = await import('../src/sms/policy.js');
 const { buildMessage, buildReminderVars, sendReminderSms } = await import('../src/scheduler.js');
 const { DEFAULT_SETTINGS, openTenant, setSetting, getSettings, owners, pets, reminders, smsLog } = await import('../src/db/tenant.js');

@@ -11,6 +11,7 @@ import {
 } from './helpers.js';
 
 setupEnv();
+process.env.SMS_MODE = 'live'; // bu dosya sahte sağlayıcılarla gerçek gönderim yolunu sınar (ağ çağrısı yok)
 const { PROVIDERS } = await import('../src/sms/index.js');
 const { master } = await import('../src/db/master.js');
 const { openTenant, setSetting, reminders, owners } = await import('../src/db/tenant.js');

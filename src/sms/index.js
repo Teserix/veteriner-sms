@@ -1,13 +1,27 @@
 import { decrypt } from '../crypto.js';
-import { isDemoPhone } from '../util.js';
+import { isDemoPhone, maskPhoneTail } from '../util.js';
 
 /**
  * SMS sağlayıcı katmanı.
  * Her sağlayıcı: send({ to, message, sender, credentials }) => { ok, ref?, error? }
  *   to: 905XXXXXXXXX biçiminde normalize numara (sağlayıcı kendi biçimine çevirir)
  * Yeni sağlayıcı eklemek için PROVIDERS nesnesine bir giriş ekleyin.
- * provider.send() yalnızca sendSms() üzerinden, o da yalnızca sms/dispatch.js üzerinden çağrılır.
+ * provider.send() yalnızca deliver() (tek gönderim kapısı) üzerinden çağrılır; deliver() yalnızca sendSms()
+ * içinden, sendSms() de yalnızca sms/dispatch.js üzerinden çağrılır.
+ * Gerçek gönderim YALNIZCA process.env.SMS_MODE === 'live' iken yapılır; aksi hâlde (yok/console/başka değer)
+ * sağlayıcı ve hesap bilgisi ne olursa olsun ağ çağrısı yapılmaz, maskelenmiş satır konsola yazılır.
  */
+
+/** Etkin SMS modu: yalnızca tam olarak 'live' gerçek gönderim açar; geri kalan her şey 'console'. */
+export function smsMode() {
+  return process.env.SMS_MODE === 'live' ? 'live' : 'console';
+}
+
+/** Konsol satırı: numaranın yalnızca son 2 hanesi, mesaj metni ASLA yazılmaz (yalnızca uzunluk). */
+function consoleSend({ to, message, sender }) {
+  console.log(`[SMS-KONSOL] -> ${maskPhoneTail(to)} (${sender || 'başlıksız'}) ${String(message || '').length} karakter`);
+  return { ok: true, ref: 'konsol-' + Date.now() };
+}
 
 const TIMEOUT_MS = 15000;
 
@@ -52,13 +66,7 @@ export const PROVIDERS = {
     fields: [],
     senderHelp: 'Test modunda başlık gerekmez.',
     async send({ to, message, sender }) {
-      const masked = to.slice(0, 5) + '*****' + to.slice(-2);
-      if (process.env.NODE_ENV === 'production') {
-        console.log(`[SMS-KONSOL] -> ${masked} (${sender || 'başlıksız'}) ${message.length} karakter`);
-      } else {
-        console.log(`[SMS-KONSOL] -> ${masked} (${sender || 'başlıksız'}): ${message}`);
-      }
-      return { ok: true, ref: 'konsol-' + Date.now() };
+      return consoleSend({ to, message, sender });
     },
   },
 
@@ -210,6 +218,17 @@ export async function sendSms(settings, to, message) {
     return { ok: false, error: 'Kayıtlı sağlayıcı bilgileri çözülemedi (APP_SECRET değişmiş olabilir); Ayarlar sayfasından yeniden girin.', providerName: name };
   }
   if (!/^905\d{9}$/.test(String(to))) return { ok: false, error: 'Geçersiz telefon numarası', providerName: name };
-  const r = await provider.send({ to: String(to), message: msg, sender, credentials });
+  return deliver({ name, provider, to: String(to), message: msg, sender, credentials });
+}
+
+/**
+ * TEK GÖNDERİM KAPISI. Sağlayıcıya (ağa) giden her çağrı buradan geçer.
+ * SMS_MODE !== 'live' ise sağlayıcı çağrılmaz; konsol satırı yazılır ve başarı döner (providerName 'console').
+ */
+export async function deliver({ name, provider, to, message, sender, credentials }) {
+  if (smsMode() !== 'live' || name === 'console') {
+    return { ...consoleSend({ to, message, sender }), providerName: 'console' };
+  }
+  const r = await provider.send({ to, message, sender, credentials });
   return { ...r, providerName: name };
 }

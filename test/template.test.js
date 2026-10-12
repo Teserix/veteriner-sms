@@ -115,8 +115,8 @@ describe('sendSms (console)', () => {
     assert.ok(r.ref);
     const line = lines.find((l) => l.includes('[SMS-KONSOL]'));
     assert.ok(line, 'konsol sağlayıcısı log yazmalı');
-    const body = line.slice(line.indexOf('): ') + 3);
-    assert.equal(body.length, MAX_MESSAGE_LENGTH);
+    assert.ok(line.includes(`${MAX_MESSAGE_LENGTH} karakter`), 'kısaltılmış uzunluk loglanmalı');
+    assert.ok(!line.includes('x'.repeat(10)), 'mesaj metni loglanmamalı');
     assert.ok(!line.includes('905321234567'), 'numara maskelenmeli');
   });
   test('boş mesaj ve geçersiz numara reddedilir', async () => {

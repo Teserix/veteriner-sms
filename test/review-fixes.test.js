@@ -10,6 +10,7 @@ import {
 } from './helpers.js';
 
 setupEnv();
+process.env.SMS_MODE = 'live'; // bu dosya sahte sağlayıcılarla gerçek gönderim yolunu sınar (ağ çağrısı yok)
 const { parseCsv, detectDelimiter } = await import('../src/csv.js');
 const { nextDueDate, sendReminderSms } = await import('../src/scheduler.js');
 const { PROVIDERS } = await import('../src/sms/index.js');
