@@ -1,7 +1,7 @@
 import { clinics, auditLog } from '../db/master.js';
 import { smsLog, legalProblems } from '../db/tenant.js';
 import { sendSms } from './index.js';
-import { identityLine } from './policy.js';
+import { identityLine, hasMandatoryTail } from './policy.js';
 import { audit } from '../audit.js';
 import { log } from '../log.js';
 import { withLock } from '../lock.js';
@@ -14,9 +14,12 @@ import { todayLocal, localDayStartIso, toInt, nowIso } from '../util.js';
  * Tavan aşımında gönderilmez ve sms_log'a yazılmaz; günde bir denetim satırı düşülür.
  * dispatch() klinik başına kilit altında çalışır (eşzamanlı istekler tavanı aşamaz).
  *
- * dispatch({ clinicId, db, settings, kind: 'reminder'|'test'|'manual', to, message,
+ * dispatch({ clinicId, db, settings, kind: 'reminder'|'test'|'manual', to, message, optOutToken?,
  *            owner?: {id,name,sms_opt_in}, pet?: {id,name}, reminderId?, sentBy })
- * => { ok, ref?, error?, skipped?: 'opt-out'|'cap'|'legal', providerName?, logId? }
+ * => { ok, ref?, error?, skipped?: 'opt-out'|'cap'|'legal'|'tail', providerName?, logId? }
+ *
+ * Son kilit (test hariç): metin 'Bilgilendirme: ' önekiyle başlamalı ve gerçek kimlik + iptal kuyruğuyla
+ * (optOutToken ile üretilen) bitmeli (policy.js hasMandatoryTail); değilse sağlayıcıya gitmez, sms_log'a yazılmaz.
  *
  * Hukuki iz: her satıra hangi dayanakla gönderildiği (m6_1 = Ticari İletişim Yön. m.6/1 bakım bilgilendirmesi),
  * sağlayıcıya iletilen iys bayrağı ('0' = bilgilendirme, m.11/8 beyanı) ve iletideki kimlik satırı yazılır.
@@ -42,7 +45,7 @@ export function usedToday(db) {
 }
 
 /** Kilitsiz sürüm: yalnızca zaten withLock(lockKey(clinicId)) içinden çağrılır (bkz. scheduler.js) */
-export async function dispatchUnlocked({ clinicId, db, settings, kind = 'reminder', to, message, owner = null, pet = null, reminderId = null, sentBy = 'zamanlayici' }) {
+export async function dispatchUnlocked({ clinicId, db, settings, kind = 'reminder', to, message, optOutToken = '', owner = null, pet = null, reminderId = null, sentBy = 'zamanlayici' }) {
   if (kind !== 'test') {
     const legal = legalProblems(settings);
     if (legal.length) {
@@ -62,6 +65,11 @@ export async function dispatchUnlocked({ clinicId, db, settings, kind = 'reminde
       log.warn('günlük SMS tavanına ulaşıldı', { clinicId, cap });
     }
     return { ok: false, skipped: 'cap', error: `Günlük SMS sınırına ulaşıldı (${cap}). Yarın tekrar denenecek.` };
+  }
+
+  if (kind !== 'test' && !hasMandatoryTail(message, settings, clinicId, optOutToken)) {
+    log.error('zorunlu kimlik/iptal kuyruğu eksik; SMS gönderilmedi', { clinicId, kind });
+    return { ok: false, skipped: 'tail', error: 'Gönderim durduruldu: mesajda zorunlu kimlik veya iptal satırı eksik.' };
   }
 
   const at = nowIso();
