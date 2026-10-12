@@ -143,6 +143,8 @@ Ayrıntı: `docs/mevzuat-uyum-spesifikasyonu.md` (doğrulanmış dayanaklar, avu
   (`/sahipler/disa-aktar.csv`).
 - **Hatırlatmalar** (`/hatirlatmalar`): bugün/yaklaşan/gecikmiş listeleri, durum değiştirme,
   **Şimdi gönder** (zamanlayıcıyı beklemeden tek hatırlatmayı gönderir; saatte en fazla 30).
+- **SMS önizleme** (`/hatirlatmalar/:id/onizle`): gönderilecek tam metin (kimlik + gövde + iptal),
+  gövde düzenleme ve canlı parça sayacı. Ayrıntı: `docs/sms-onizleme.md`.
 - **SMS geçmişi** (`/sms`): son 300 gönderim, sağlayıcı yanıtı ve hata metni.
 - **Özet** (`/`): bugün gönderilecekler, aylık sayaçlar, **günlük SMS sınırı** kullanımı.
 
