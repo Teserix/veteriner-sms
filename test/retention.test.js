@@ -124,7 +124,8 @@ describe('dispatch hukuki izi ve kilidi', () => {
   test('gönderilen satıra dayanak, iys bayrağı ve kimlik yazılır', async () => {
     const { id, db } = makeClinic();
     const settings = (await import('../src/db/tenant.js')).getSettings(db);
-    const r = await dispatch({ clinicId: id, db, settings, kind: 'reminder', to: '905321234567', message: 'm', owner: { id: 1, name: 'x', sms_opt_in: 1 }, sentBy: 't' });
+    const message = (await import('../src/sms/policy.js')).composeMessage(settings, 'm', { clinicId: id });
+    const r = await dispatch({ clinicId: id, db, settings, kind: 'reminder', to: '905321234567', message, owner: { id: 1, name: 'x', sms_opt_in: 1 }, sentBy: 't' });
     assert.equal(r.ok, true);
     const row = db.prepare('SELECT * FROM sms_log WHERE id = ?').get(r.logId);
     assert.equal(row.legal_basis, 'm6_1');
