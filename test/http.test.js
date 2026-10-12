@@ -191,6 +191,10 @@ test('ek) PWA kurulum satırı: nötr metin düğmesi ve erişilebilir kapat', (
   assert.ok(!js.includes('Uygulamayı ana ekranınıza ekleyebilirsiniz'));
   assert.ok(!/installBanner = showBanner/.test(js), 'kurulum ipucu sarı bant (warnbox) kullanmaz');
   assert.ok(!js.includes("'role', 'alert'"));
+  // Duyuru içerikten gelsin: aria-label adı .pwa-text metnini (iOS yönergesi dahil) gölgelemez.
+  assert.ok(!js.includes("'aria-label', 'Uygulamayı yükleme önerisi'"));
+  assert.ok(js.includes("box.setAttribute('role', 'status')"));
+  assert.ok(js.includes("msg.className = 'pwa-text'"));
   const css = fs.readFileSync(new URL('../public/style.css', import.meta.url), 'utf8');
   assert.ok(css.includes('.pwa-install-line'));
   assert.ok(css.includes('.btn.is-disabled'));
