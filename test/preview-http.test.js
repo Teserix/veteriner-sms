@@ -4,6 +4,7 @@
  */
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
   setupEnv, createClient, startApp, createSuperadmin, login, csrfFor,
   createClinicViaHttp, loginAndChangePassword, logout,
@@ -205,7 +206,7 @@ test('kayıtlı body_override yokken (ya da şablonla aynıyken) bilgi bandı yo
 const INVALID_BANNER = 'kayıtlı düzenlenmiş gövde geçersiz';
 const savedBand = (html) => /<div class="alert warn sms-saved-override"[^>]*>[\s\S]*?<\/div>/.exec(html)?.[0] ?? '';
 
-test('kayıtlı gövde sonradan geçersizse önizleme 200, sorunu listeler; band "gönderilir" demez, Gönder kapalı', async () => {
+test('kayıtlı gövde sonradan geçersizse önizleme 200, sorunu listeler; band "gönderilir" demez, Gönder JS kilidinde', async () => {
   for (const [i, saved] of ['MERSIS:1 Iptal: x', 'Merhaba\u0007zil'].entries()) {
     const { rem } = await quick(a, { phone: '0532111002' + i });
     reminders.setBodyOverride(dbA, rem.id, saved);
@@ -217,7 +218,9 @@ test('kayıtlı gövde sonradan geçersizse önizleme 200, sorunu listeler; band
     assert.match(band, /role="alert"/);
     assert.ok(!band.includes('gönderimde bu metin kullanılır'), band);
     assert.ok(!page.text.includes(SAVED_BANNER));
-    assert.match(page.text, /type="submit" disabled/);
+    // Yalnız gövde sorunu: düğme HTML'de açık (JS'siz düzeltip gönderme); kilidi istemci ilk ham değerde uygular
+    assert.match(page.text, /<button class="btn" type="submit" >/);
+    assert.doesNotMatch(page.text, /type="submit" disabled/);
     assert.match(page.text, /data-invalid-body="1"/);
     assert.match(page.text, /data-server-blocked="0"/, 'gövde sorunu sunucu blokajı sayılmaz (istemci düzeltmeye izin verir)');
   }
@@ -227,7 +230,30 @@ test('kayıtlı gövde sonradan geçersizse önizleme 200, sorunu listeler; band
   assert.match(page.text, /MERSIS:1 Iptal: x<\/textarea>/);
 });
 
-test('geçerli kayıtlı gövde: Gönder açık, mevcut bilgi bandı; blokajsız sayfa data-server-blocked="0"', async () => {
+test('satır sonu/sekme içeren kayıtlı gövde: düğme açık, ham gövde reddedilir, düzeltilmiş gövde gönderilir', async () => {
+  for (const [i, saved] of ['Merhaba\nzil', 'Merhaba\tzil'].entries()) {
+    const { rem, csrf } = await quick(a, { phone: '0532111005' + i });
+    reminders.setBodyOverride(dbA, rem.id, saved);
+    const page = await a.get(`/hatirlatmalar/${rem.id}/onizle`);
+    assert.equal(page.status, 200);
+    assert.match(page.text, /data-invalid-body="1"/);
+    assert.doesNotMatch(page.text, /type="submit" disabled/);
+    const n = sent.length;
+    // Ham gövde: sunucu bodyProblems ile reddeder (400 + önizleme), SMS gitmez
+    const bad = await a.post(`/hatirlatmalar/${rem.id}/gonder`, { _csrf: csrf, body: saved });
+    assert.equal(bad.status, 400, JSON.stringify(saved));
+    assert.match(bad.text, /<div class="flash err" role="alert">/);
+    assert.doesNotMatch(bad.text, /type="submit" disabled/);
+    assert.equal(sent.length, n);
+    // Yalnız satır sonu/sekme düzeltildi (normalize hali aynı): kabul edilir
+    const ok = await a.post(`/hatirlatmalar/${rem.id}/gonder`, { _csrf: csrf, body: 'Merhaba zil' });
+    assert.match(ok.location, /ok=/);
+    assert.equal(sent.length, n + 1);
+    assert.ok(sent.at(-1).message.includes('Merhaba zil'), sent.at(-1).message);
+  }
+});
+
+test('geçerli kayıtlı gövde: Gönder açık,mevcut bilgi bandı; blokajsız sayfa data-server-blocked="0"', async () => {
   const { rem } = await quick(a, { phone: '05321110030' });
   let page = await a.get(`/hatirlatmalar/${rem.id}/onizle`);
   assert.match(page.text, /data-server-blocked="0"/);
@@ -277,6 +303,26 @@ test('JS kapalıyken "Orijinale dön": ?orijinal=1 şablon gövdesini açar, kay
     assert.ok(!sent.at(-1).message.includes(saved));
     assert.equal(JSON.parse(auditRows(clinicA).at(-1).meta).edited, false);
   }
+});
+
+test('"Orijinale dön" gövde şablonla aynıyken tabindex="-1" (sekme sırasında değil); farklı gövdede yok', async () => {
+  const { rem } = await quick(a, { phone: '05321110060' });
+  const resetTag = (html) => /<a [^>]*data-sms-reset[^>]*>/.exec(html)?.[0] ?? '';
+  reminders.setBodyOverride(dbA, rem.id, 'Pamuk için aşı günü geldi, sizi bekliyoruz.');
+  let page = await a.get(`/hatirlatmalar/${rem.id}/onizle?orijinal=1`);
+  assert.match(resetTag(page.text), /tabindex="-1"/);
+  assert.match(resetTag(page.text), /aria-disabled="true"/);
+  page = await a.get(`/hatirlatmalar/${rem.id}/onizle`);
+  assert.ok(resetTag(page.text), 'reset bağlantısı');
+  assert.doesNotMatch(resetTag(page.text), /tabindex/);
+  assert.doesNotMatch(resetTag(page.text), /aria-disabled/);
+
+  // İstemci: aynı gövdede tabindex=-1, değişince kaldırılır; geçersiz gövde kilidi ham ilk değere bağlı
+  const js = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.ok(js.includes("reset.setAttribute('tabindex', '-1')"));
+  assert.ok(js.includes("reset.removeAttribute('tabindex')"));
+  assert.ok(js.includes("? ta.value : null"), 'açılışta ham değer saklanır');
+  assert.ok(js.includes('ta.value === invalidRaw'), 'kilit ham değer karşılaştırması');
 });
 
 test('opt-out sahibine ve demo numaraya gönderim engellenir; önizlemede düğme devre dışı', async () => {

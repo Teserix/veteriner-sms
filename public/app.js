@@ -106,8 +106,10 @@ function smsEncodingLabel(enc) {
   var submit = form ? form.querySelector('button[type="submit"]') : null;
   // Sunucu engel bildirdiyse (kimlik eksik, SMS izni yok...) istemci düğmeyi asla açmaz
   var lockedByServer = !submit || ta.getAttribute('data-server-blocked') === '1';
-  // Sunucunun geçersiz bulduğu gövde (örn. kayıtlı body_override): değiştirilmedikçe Gönder kapalı kalır
-  var invalidBody = ta.getAttribute('data-invalid-body') === '1' ? smsNormalizeBody(ta.value) : null;
+  // Sunucunun geçersiz bulduğu gövde (örn. kayıtlı body_override): ham ilk değer saklanır; metin birebir aynıyken
+  // Gönder kapalı kalır. Satır sonu/sekme ya da fazla boşluk silmek dahil her değişiklik kilidi kaldırır;
+  // son kararı POST'ta sunucu (bodyProblems) verir.
+  var invalidRaw = ta.getAttribute('data-invalid-body') === '1' ? ta.value : null;
   var prefix = ta.getAttribute('data-prefix') || '';
   var tail = ta.getAttribute('data-tail') || '';
   var maxTotal = parseInt(ta.getAttribute('data-max-total'), 10) || 0;
@@ -128,15 +130,16 @@ function smsEncodingLabel(enc) {
       counter.classList.toggle('is-over', !!(over || empty));
       counter.classList.toggle('is-multi', !over && !empty && seg.segments > 1);
     }
-    var serverInvalid = invalidBody !== null && body === invalidBody;
+    var serverInvalid = invalidRaw !== null && ta.value === invalidRaw;
     ta.classList.toggle('is-invalid', !!(over || empty || serverInvalid));
     ta.setAttribute('aria-invalid', over || empty || serverInvalid ? 'true' : 'false');
     if (submit && !lockedByServer) submit.disabled = !!(over || empty || serverInvalid);
     if (reset) {
-      // <a> için disabled yok: aria-disabled + .is-disabled (NOT: .btn.is-disabled görünümü .btn[disabled] ile
-      // aynı olmalı; kural style.css'e 3. alt işte eklenecek). Tıklama aşağıda yok sayılır.
+      // <a> için disabled yok: aria-disabled + .is-disabled; tıklama aşağıda yok sayılır
       var same = smsNormalizeBody(ta.value) === smsNormalizeBody(original);
       if (same) reset.setAttribute('aria-disabled', 'true'); else reset.removeAttribute('aria-disabled');
+      // Etkisizken sekme sırasından da çıkar (eski disabled düğme gibi)
+      if (same) reset.setAttribute('tabindex', '-1'); else reset.removeAttribute('tabindex');
       reset.classList.toggle('is-disabled', same);
     }
   }

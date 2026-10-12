@@ -17,11 +17,14 @@
   //     data-server-blocked   : "1" ise gönderim gövdeden bağımsız engelli (blockers); istemci Gönder'i asla açmaz
   //     data-invalid-body     : "1" ise sunucu bu gövdeyi geçersiz buldu (bodyProblems); gövde bu ilk değerdeyken
   //                             Gönder kapalı kalır, kullanıcı değiştirince istemci denetimi geçer (POST'ta yine sunucu)
-  //   button[type=submit]     : canSend = blokaj yok VE gövde sorunu yok; değilse sunucuda disabled çizilir
+  //   button[type=submit]     : canSend = blokaj yok VE gövde sorunu yok. HTML'de yalnız blokaj varken (submitDisabled)
+  //                             disabled çizilir; bodyInvalid iken açık çizilir (JS'siz de düzeltip gönderilebilsin),
+  //                             JS ilk ham değerde kapatır, sunucu POST'ta bodyProblems ile yine reddeder
   //   output[data-sms-counter]: canlı karakter/parça sayacı; JS yoksa sunucunun hesapladığı ilk değer görünür
   //   a[data-sms-reset]       : "Orijinale dön" bağlantısı (?orijinal=1); JS yoksa sunucu kayıtlı gövdeyi yok sayıp
   //                             şablon gövdesini yükler (DB'ye dokunmaz). JS varken tıklama yerinde data-original'a
-  //                             döndürür; gövde zaten orijinalse aria-disabled="true" + .is-disabled alır
+  //                             döndürür; gövde zaten orijinalse aria-disabled="true" + .is-disabled + tabindex="-1"
+  //                             alır (sunucu ilk çizimde bodySame ile, istemci her girişte)
   //   .sms-full               : gönderilecek tam metin (sunucu hesabı)
   const seg = parts.segments;
   const tail = [parts.identity, parts.optOut].filter(Boolean).join(' ');
@@ -68,8 +71,8 @@
       <p class="sms-full"><%= parts.full %></p>
     </section>
     <div class="form-actions">
-      <button class="btn" type="submit" <%= canSend ? '' : 'disabled' %>><%- icon('send') %>Gönder</button>
-      <a class="btn secondary" href="/hatirlatmalar/<%= reminder.id %>/onizle?orijinal=1" data-sms-reset>Orijinale dön</a>
+      <button class="btn" type="submit" <%= submitDisabled ? 'disabled' : '' %>><%- icon('send') %>Gönder</button>
+      <a class="btn secondary<%= bodySame ? ' is-disabled' : '' %>" href="/hatirlatmalar/<%= reminder.id %>/onizle?orijinal=1" data-sms-reset<% if (bodySame) { %> aria-disabled="true" tabindex="-1"<% } %>>Orijinale dön</a>
     </div>
   </form>
 </div>
