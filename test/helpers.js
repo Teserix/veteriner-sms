@@ -7,6 +7,64 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
+import http from 'node:http';
+
+/* ---------- Taşıma: TCP, olmazsa Unix soketi ----------
+ * Atölye testleri sandbox-exec içinde (ağ kapalı) koşar; orada 127.0.0.1'e listen() EPERM verir.
+ * Bu durumda sunucu geçici bir Unix soketinde dinler, testFetch istekleri o sokete yönlendirir.
+ * VET_TEST_SOCKET=1 soket yolunu zorlar (sandbox dışında da doğrulanabilsin). */
+const sockets = new Map(); // mantıksal origin -> soket yolu
+
+/** Uygulamayı dinletir. Döner: { base, server } */
+export async function listenApp(app) {
+  if (process.env.VET_TEST_SOCKET !== '1') {
+    const server = app.listen(0, '127.0.0.1'); // yalnız yerel arayüz (base ile aynı adres)
+    try {
+      await once(server, 'listening');
+      return { base: `http://127.0.0.1:${server.address().port}`, server };
+    } catch (e) {
+      if (e.code !== 'EPERM' && e.code !== 'EACCES') throw e;
+    }
+  }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vet-sock-'));
+  const sock = path.join(dir, 'app.sock');
+  const server = app.listen(sock);
+  await once(server, 'listening');
+  let port = 40000;
+  while (sockets.has(`http://127.0.0.1:${port}`)) port++;
+  const base = `http://127.0.0.1:${port}`; // mantıksal origin; trafik sokete gider
+  sockets.set(base, sock);
+  server.once('close', () => { sockets.delete(base); fs.rmSync(dir, { recursive: true, force: true }); });
+  return { base, server };
+}
+
+/** fetch ile aynı arayüz; listenApp soket kullandıysa isteği o sokete yollar */
+export async function testFetch(url, init = {}) {
+  const req = new Request(url, init);
+  const u = new URL(req.url);
+  const sock = sockets.get(u.origin);
+  if (!sock) return fetch(req);
+  const body = ['GET', 'HEAD'].includes(req.method) ? null : Buffer.from(await req.arrayBuffer());
+  const headers = Object.fromEntries(req.headers);
+  headers.host = u.host;
+  if (body) headers['content-length'] = String(body.length);
+  return new Promise((resolve, reject) => {
+    const r = http.request({ socketPath: sock, method: req.method, path: u.pathname + u.search, headers }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('error', reject);
+      res.on('end', () => {
+        const h = new Headers();
+        for (let i = 0; i < res.rawHeaders.length; i += 2) h.append(res.rawHeaders[i], res.rawHeaders[i + 1]);
+        const nullBody = [204, 205, 304].includes(res.statusCode) || req.method === 'HEAD';
+        resolve(new Response(nullBody ? null : Buffer.concat(chunks), { status: res.statusCode, statusText: res.statusMessage, headers: h }));
+      });
+    });
+    r.on('error', reject);
+    if (body) r.write(body);
+    r.end();
+  });
+}
 
 export const TEST_SECRET = 'test-app-secret-0123456789abcdef0123456789abcdef';
 
@@ -57,19 +115,19 @@ export function createClient(base) {
     base,
     jar,
     async get(p, extraHeaders = {}) {
-      const res = await fetch(base + p, { headers: { cookie: cookieHeader(), ...extraHeaders }, redirect: 'manual' });
+      const res = await testFetch(base + p, { headers: { cookie: cookieHeader(), ...extraHeaders }, redirect: 'manual' });
       return wrap(res);
     },
     /** Ham baytlar (Response.text() baştaki UTF-8 BOM'u siler; BOM denetimi için gerekli) */
     async getBytes(p, extraHeaders = {}) {
-      const res = await fetch(base + p, { headers: { cookie: cookieHeader(), ...extraHeaders }, redirect: 'manual' });
+      const res = await testFetch(base + p, { headers: { cookie: cookieHeader(), ...extraHeaders }, redirect: 'manual' });
       storeCookies(res);
       const bytes = new Uint8Array(await res.arrayBuffer());
       return { status: res.status, headers: res.headers, bytes, text: new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes) };
     },
     async post(p, data = {}, extraHeaders = {}) {
       const body = new URLSearchParams(data).toString();
-      const res = await fetch(base + p, {
+      const res = await testFetch(base + p, {
         method: 'POST',
         headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: cookieHeader(), origin: base, ...extraHeaders },
         body,
@@ -90,9 +148,7 @@ export async function startApp() {
   const { config } = await import('../src/config.js');
   await initAuth();
   const app = createApp();
-  const server = app.listen(0, '127.0.0.1'); // yalnız yerel arayüz (base ile aynı adres)
-  await once(server, 'listening');
-  const base = `http://127.0.0.1:${server.address().port}`;
+  const { base, server } = await listenApp(app);
   // Port ancak listen sonrası belli olur; Origin denetimi tam origin karşılaştırdığı için eşitle.
   config.appOrigin = base;
   const close = async () => {

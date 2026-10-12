@@ -6,7 +6,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { setupEnv, startApp, createClient, createSuperadmin, csrfOf, resetLoginLimiter, acceptLegal } from './helpers.js';
+import { setupEnv, startApp, createClient, createSuperadmin, csrfOf, resetLoginLimiter, acceptLegal, testFetch } from './helpers.js';
 
 const dataDir = setupEnv();
 const { todayLocal } = await import('../src/util.js');
@@ -29,11 +29,11 @@ before(async () => {
 after(async () => { console.log = origLog; await app.close(); });
 
 test('ops: /api/health ve /api/version JSON', async () => {
-  const h = await fetch(app.base + '/api/health');
+  const h = await testFetch(app.base + '/api/health');
   assert.equal(h.status, 200);
   assert.match(h.headers.get('content-type'), /application\/json/);
   assert.deepEqual(await h.json(), { ok: true });
-  const v = await fetch(app.base + '/api/version');
+  const v = await testFetch(app.base + '/api/version');
   assert.equal(v.status, 200);
   const body = await v.json();
   assert.equal(body.name, 'veteriner-sms');

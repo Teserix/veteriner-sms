@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import {
   setupEnv, createClient, startApp, createSuperadmin, login, csrfFor, csrfOf,
   createClinicViaHttp, loginAndChangePassword, logout, resetLoginLimiter,
-  LEGAL_SETTINGS,
+  LEGAL_SETTINGS, testFetch,
 } from './helpers.js';
 
 setupEnv();
@@ -145,7 +145,7 @@ test('HTTP düzeltmeleri', async (t) => {
   await createSuperadmin('root@test.local', 'Root12345');
 
   await t.test('JSON gövdeli POST /giris 500 değil 403 döner', async () => {
-    const res = await fetch(app.base + '/giris', { method: 'POST', headers: { 'content-type': 'application/json', origin: app.base }, body: JSON.stringify({ email: 'a@b.co' }), redirect: 'manual' });
+    const res = await testFetch(app.base + '/giris', { method: 'POST', headers: { 'content-type': 'application/json', origin: app.base }, body: JSON.stringify({ email: 'a@b.co' }), redirect: 'manual' });
     assert.equal(res.status, 403);
   });
 

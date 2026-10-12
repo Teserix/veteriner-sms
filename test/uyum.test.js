@@ -33,7 +33,7 @@ before(async () => {
   await loginAndChangePassword(c, ADMIN, TEMP, NEW);
 });
 
-after(async () => { await app.close(); });
+after(async () => { await app?.close(); }); // before() düşerse asıl hatayı gizlemesin
 
 test('oturumsuz hukuki sayfalar 200 döner, footer bağlantıları var, şablon belgesi doğrudan açılamaz', async () => {
   const anon = createClient(app.base);

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { listenApp, testFetch } from './helpers.js';
 
 const ORIGIN = 'http://localhost:3301';
 process.env.SKIP_DOTENV = '1';
@@ -32,13 +33,13 @@ function storeCookies(res) {
   }
 }
 async function get(p) {
-  const res = await fetch(BASE + p, { headers: { cookie: cookieHeader() }, redirect: 'manual' });
+  const res = await testFetch(BASE + p, { headers: { cookie: cookieHeader() }, redirect: 'manual' });
   storeCookies(res); const text = await res.text();
   return { status: res.status, location: res.headers.get('location'), text };
 }
 async function post(p, data) {
   const body = new URLSearchParams(data).toString();
-  const res = await fetch(BASE + p, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: cookieHeader(), origin: ORIGIN }, body, redirect: 'manual' });
+  const res = await testFetch(BASE + p, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: cookieHeader(), origin: ORIGIN }, body, redirect: 'manual' });
   storeCookies(res); const text = await res.text();
   return { status: res.status, location: res.headers.get('location'), text };
 }
@@ -46,7 +47,7 @@ async function upload(csrf, content, filename = 'liste.csv', extraHeaders = {}) 
   const fd = new FormData();
   if (csrf != null) fd.append('_csrf', csrf);
   fd.append('file', new Blob([content], { type: 'text/csv' }), filename);
-  const res = await fetch(BASE + '/iceaktar', { method: 'POST', headers: { cookie: cookieHeader(), origin: ORIGIN, ...extraHeaders }, body: fd, redirect: 'manual' });
+  const res = await testFetch(BASE + '/iceaktar', { method: 'POST', headers: { cookie: cookieHeader(), origin: ORIGIN, ...extraHeaders }, body: fd, redirect: 'manual' });
   storeCookies(res); const text = await res.text();
   return { status: res.status, location: res.headers.get('location'), text };
 }
@@ -61,8 +62,7 @@ before(async () => {
   await initAuth();
   users.create({ clinicId: null, email: 'root@example.com', name: 'Root', passwordHash: await hashPassword('Root12345'), role: 'superadmin', createdAt: new Date().toISOString() });
   const app = createApp();
-  server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
-  BASE = `http://127.0.0.1:${server.address().port}`;
+  ({ server, base: BASE } = await listenApp(app));
 
   // superadmin: giriş + klinik oluştur
   let r = await get('/giris');
@@ -163,8 +163,8 @@ test('yükle -> eşleştir -> önizle -> onayla', async () => {
   assert.ok(r.text.includes('Ali; Veli'));
   assert.ok(r.text.includes('0532 123 45 67'));
 
-  // fetch().text() baştaki BOM'u siler; ham baytlara bak
-  const eRes = await fetch(`${BASE}/iceaktar/${token}/hatalar.csv`, { headers: { cookie: cookieHeader() } });
+  // testFetch().text() baştaki BOM'u siler; ham baytlara bak
+  const eRes = await testFetch(`${BASE}/iceaktar/${token}/hatalar.csv`, { headers: { cookie: cookieHeader() } });
   assert.equal(eRes.status, 200);
   assert.ok(eRes.headers.get('content-disposition').includes('attachment'));
   const eBytes = Buffer.from(await eRes.arrayBuffer());
