@@ -96,6 +96,8 @@
   /**
    * Kurulum ipucu: sarı bant yerine nötr, ince ve kapatılabilir tek satır
    * (.pwa-install-line). role=alert değil; sonradan eklendiği için polite duyurulur.
+   * aria-label yok: ad ve duyuru içerikten (.pwa-text) gelir, iOS yönergesi de okunur.
+   * Metin doldurulduktan sonra DOM'a eklenir.
    * @param {object}   o
    * @param {string}   o.text        Satır metni
    * @param {string}   [o.action]    Metin düğmesi etiketi (yoksa düğme eklenmez)
@@ -110,7 +112,6 @@
     var box = document.createElement('div');
     box.className = 'pwa-install-line';
     box.setAttribute('role', 'status');
-    box.setAttribute('aria-label', 'Uygulamayı yükleme önerisi');
 
     var msg = document.createElement('span');
     msg.className = 'pwa-text';
