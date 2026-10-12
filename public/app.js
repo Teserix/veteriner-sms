@@ -132,14 +132,22 @@ function smsEncodingLabel(enc) {
     ta.classList.toggle('is-invalid', !!(over || empty || serverInvalid));
     ta.setAttribute('aria-invalid', over || empty || serverInvalid ? 'true' : 'false');
     if (submit && !lockedByServer) submit.disabled = !!(over || empty || serverInvalid);
-    if (reset) reset.disabled = smsNormalizeBody(ta.value) === smsNormalizeBody(original);
+    if (reset) {
+      // <a> için disabled yok: aria-disabled + .is-disabled (NOT: .btn.is-disabled görünümü .btn[disabled] ile
+      // aynı olmalı; kural style.css'e 3. alt işte eklenecek). Tıklama aşağıda yok sayılır.
+      var same = smsNormalizeBody(ta.value) === smsNormalizeBody(original);
+      if (same) reset.setAttribute('aria-disabled', 'true'); else reset.removeAttribute('aria-disabled');
+      reset.classList.toggle('is-disabled', same);
+    }
   }
 
   ta.addEventListener('input', render);
   if (reset) {
     reset.addEventListener('click', function (e) {
-      // JS yokken düğme formu ilk değerine döndürür; JS ile her zaman şablondaki orijinal gövde geri gelir
+      // JS yokken bağlantı sunucudan şablon gövdesini yükler (?orijinal=1); JS ile sayfa yenilenmeden
+      // şablondaki orijinal gövde geri gelir
       e.preventDefault();
+      if (reset.getAttribute('aria-disabled') === 'true') return;
       ta.value = original;
       render();
       ta.focus();

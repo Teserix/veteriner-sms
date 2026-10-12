@@ -243,6 +243,41 @@ test('geçerli kayıtlı gövde: Gönder açık, mevcut bilgi bandı; blokajsız
   assert.match(page.text, /data-server-blocked="0"/);
 });
 
+test('JS kapalıyken "Orijinale dön": ?orijinal=1 şablon gövdesini açar, kayıtlı gövdeye dokunmaz; gönderim edited=false', async () => {
+  const savedBodies = ['MERSIS:1 Iptal: x', 'Pamuk için aşı günü geldi, sizi bekliyoruz.'];
+  for (const [i, saved] of savedBodies.entries()) {
+    const { rem, csrf } = await quick(a, { phone: '0532111004' + i });
+    reminders.setBodyOverride(dbA, rem.id, saved);
+    let page = await a.get(`/hatirlatmalar/${rem.id}/onizle`);
+    // Bağlantı type=reset değil, sunucu tarafında çalışan GET
+    assert.ok(page.text.includes(`href="/hatirlatmalar/${rem.id}/onizle?orijinal=1" data-sms-reset`), 'Orijinale dön bağlantısı');
+    assert.doesNotMatch(page.text, /type="reset"/);
+
+    page = await a.get(`/hatirlatmalar/${rem.id}/onizle?orijinal=1`);
+    assert.equal(page.status, 200);
+    const textarea = unescapeHtml(/<textarea[^>]*data-sms-body[^>]*>([^<]*)<\/textarea>/.exec(page.text)[1]);
+    const original = unescapeHtml(/data-original="([^"]*)"/.exec(page.text)[1]);
+    assert.equal(textarea, original);
+    assert.ok(original.startsWith('Sayın Ayşe Yılmaz, Pamuk için'), original);
+    assert.equal(savedBand(page.text), '', 'kayıtlı gövde bandı yok');
+    assert.doesNotMatch(page.text, /type="submit" disabled/);
+    assert.doesNotMatch(page.text, /data-invalid-body/);
+    assert.ok(page.text.includes(`href="/hatirlatmalar/${rem.id}/onizle?orijinal=1" data-sms-reset`));
+    // GET yan etkisiz: kayıtlı gövde yerinde
+    assert.equal(reminders.get(dbA, rem.id).body_override, saved);
+
+    // Bu sayfadan (Referer ?orijinal=1) şablon gövdesiyle gönderim: şablon gider, düzenlenmiş sayılmaz
+    const n = sent.length;
+    const r = await a.post(`/hatirlatmalar/${rem.id}/gonder`, { _csrf: csrf, body: textarea },
+      { referer: `${app.base}/hatirlatmalar/${rem.id}/onizle?orijinal=1` });
+    assert.match(r.location, new RegExp(`^/sahipler/${rem.owner_id}\\?ok=`));
+    assert.equal(sent.length, n + 1);
+    assert.equal(sent.at(-1).message, fullOf(page.text));
+    assert.ok(!sent.at(-1).message.includes(saved));
+    assert.equal(JSON.parse(auditRows(clinicA).at(-1).meta).edited, false);
+  }
+});
+
 test('opt-out sahibine ve demo numaraya gönderim engellenir; önizlemede düğme devre dışı', async () => {
   const off = await quick(a, { phone: '05321110009', optIn: '0' });
   let page = await a.get(`/hatirlatmalar/${off.rem.id}/onizle`);
