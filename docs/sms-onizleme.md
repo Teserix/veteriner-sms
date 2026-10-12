@@ -29,7 +29,7 @@ karar özetinden alınmıştır.
 
 1. Yalnız `textarea[name="body"]` alanını değiştirin. Kimlik ve iptal satırları
    yazılamaz; gövdeye `MERSIS:`, `VKN:` veya `Iptal:` yazmak sunucuda reddedilir.
-2. Sayaç yazarken güncellenir (GSM-7 veya Türkçe UCS-2). Sınır aşılırsa veya gövde
+2. Sayaç yazarken güncellenir (GSM-7, GSM-7 Türkçe veya Türkçe UCS-2; bkz. §3). Sınır aşılırsa veya gövde
    boşsa **Gönder** düğmesi kapanır; sunucu yine de POST’ta doğrular.
 3. Şablona dönmek için **Orijinale dön**.
 4. **Gönder** `POST /hatirlatmalar/:id/gonder` yollar; alanlar `_csrf` ve `body`.
@@ -72,48 +72,72 @@ gidilmez (`skipped: 'tail'`). Test SMS'i bu kilitten muaftır.
 Sunucu (`src/sms/policy.js` `smsSegments`) ve istemci (`public/app.js`) aynı
 mantığı kullanır. Ortak vektörler `test/fixtures/sms-segments.json` içindedir.
 
-Kodlama kararı `policy.js` ile tutarlıdır: yalnızca GSM 03.38 temel tablosu ve
-genişletme tablosu kullanılır. **Ulusal (Türkçe) kaydırma tablosu kullanılmaz**;
-Türk sağlayıcıları bunu desteklemez. Bu yüzden temel tabloda olmayan tek bir
-karakter (ş, ğ, ı, İ, Ş, Ğ, ç, …) bütün mesajı UCS-2'ye geçirir (70/67).
-Ç, Ö, Ü, ö, ü temel tablodadır; bunlar tek başına UCS-2'ye geçirmez.
+Kodlama kararı `policy.js` ile tutarlıdır:
+
+- GSM 03.38 temel tablosu (1 birim) ve genişletme tablosu (`GSM7_EXT`, 2 birim)
+  her zaman kullanılır. **Ç, Ö, Ü, ö, ü temel tablodadır**; 1 birimdir.
+- Sağlayıcı Netgsm ise (`usesTurkishShift(settings)`: `sms_provider === 'netgsm'`;
+  gönderimde Netgsm `encoding: 'TR'`) **Türkçe tek kaydırma tablosu**
+  (`GSM7_TR_SHIFT`: `Ğ İ Ş ç ğ ı ş`) da kullanılır. Bu harfler 2 birim sayılır ve
+  metinde en az biri varsa kodlama `gsm7tr` olur: UDH'deki 3 baytlık dil bilgisi
+  yüzünden parça kapasitesi **155/149**'dur. Bu harfler yoksa kodlama `gsm7` kalır (160/153).
+- Kaydırma tablosu kapalıysa (Netgsm dışı sağlayıcı) `Ğ İ Ş ç ğ ı ş` dahil, ya da
+  açıkken hiçbir tabloda olmayan (ör. `Â`, emoji) **tek bir karakter** bütün mesajı
+  UCS-2'ye geçirir (**70/67**; birim = UTF-16 kod birimi, vekil çift 2 birim).
 
 | Kodlama | Tek parça | Çok parça (parça başı) | Birim |
 |---|---|---|---|
 | GSM-7 (`gsm7`) | 160 | 153 | temel karakter = 1; `GSM7_EXT` her karakter 2 |
+| GSM-7 Türkçe (`gsm7tr`) | 155 | 149 | temel karakter = 1; `GSM7_EXT` ve `GSM7_TR_SHIFT` her karakter 2 |
 | UCS-2 (`ucs2`) | 70 | 67 | UTF-16 kod birimi (istemcide `String.length`) |
 
 `GSM7_EXT` (`policy.js` / `public/app.js`): `^ { } \ [ ~ ] | €`.
+`GSM7_TR_SHIFT`: `Ğ İ Ş ç ğ ı ş`.
 
-`SMS_LIMITS`: `{ gsm7: { single: 160, multi: 153 }, ucs2: { single: 70, multi: 67 } }`.
+`SMS_LIMITS`: `{ gsm7: { single: 160, multi: 153 }, gsm7tr: { single: 155, multi: 149 }, ucs2: { single: 70, multi: 67 } }`.
 
-Parça sayısı: 0 birim → 0 parça; `units <= single` → 1 parça; aksi halde
-`Math.ceil(units / multi)`. Parça sınırında bir genişletme çiftinin bölünmemesi
-gibi sağlayıcı ayrıntıları hesaba katılmaz.
+Parça sayısı (`smsSegments`): her karakterin birimi `sizes` dizisine yazılır,
+`units` bunların toplamıdır. 0 birim → 0 parça; `units <= single` → 1 parça.
+Aksi halde parçalar `sizes` üzerinde sırayla doldurulur: karakter mevcut parçaya
+sığmıyorsa (`used + u > multi`) yeni parça açılır. Böylece 2 birimlik bir karakter
+(genişletme çifti, Türkçe kaydırma çifti, UCS-2 vekil çifti) **parça sınırında
+bölünmez**, bütünüyle sonraki parçaya geçer; parça sayısı `Math.ceil(units / multi)`
+değerinden fazla olabilir. `remainingInSegment` son parçada kalan birimdir.
 
 ### Örnek hesaplar
 
-| Metin | Kodlama | Birim | Parça |
-|---|---|---|---|
-| 160 × `a` | gsm7 | 160 | 1 |
-| 161 × `a` | gsm7 | 161 | 2 |
-| 306 × `a` | gsm7 | 306 | 2 |
-| 307 × `a` | gsm7 | 307 | 3 |
-| 70 × `ş` | ucs2 | 70 | 1 |
-| 71 × `ş` | ucs2 | 71 | 2 |
-| 134 × `ş` | ucs2 | 134 | 2 |
-| `€` | gsm7 | 2 | 1 |
-| 80 × `€` | gsm7 | 160 | 1 |
-| `GSM7_EXT` eksi `€` (8 karakter) | gsm7 | 16 | 1 |
-| `ÇÖÜöü` | gsm7 | 5 | 1 |
-| `Merhaba ç` | ucs2 | 9 | 1 |
-| `ı` | ucs2 | 1 | 1 |
-| boş | gsm7 | 0 | 0 |
+`test/fixtures/sms-segments.json` vektörleri. «TR» sütunu `turkishShift` seçeneğidir
+(Netgsm); boşsa kapalıdır.
 
-Tek `ç` veya `ı` içeren bir gövde, önek ve kuyruk ASCII olsa bile **tüm iletiyi**
-UCS-2'ye geçirir; SMS başına sınır 160/153 değil 70/67 olur.
+| Metin | TR | Kodlama | Birim | Parça |
+|---|---|---|---|---|
+| 160 × `a` | | gsm7 | 160 | 1 |
+| 161 × `a` | | gsm7 | 161 | 2 |
+| 306 × `a` | | gsm7 | 306 | 2 |
+| 307 × `a` | | gsm7 | 307 | 3 |
+| 70 × `ş` | | ucs2 | 70 | 1 |
+| 71 × `ş` | | ucs2 | 71 | 2 |
+| 134 × `ş` | | ucs2 | 134 | 2 |
+| `€` | | gsm7 | 2 | 1 |
+| 80 × `€` | | gsm7 | 160 | 1 |
+| `GSM7_EXT` eksi `€` (8 karakter) | | gsm7 | 16 | 1 |
+| `ÇÖÜöü` | | gsm7 | 5 | 1 |
+| `Merhaba ç` | | ucs2 | 9 | 1 |
+| `ı` | | ucs2 | 1 | 1 |
+| boş | | gsm7 | 0 | 0 |
+| 152 × `a` + `€` + 152 × `a` | | gsm7 | 306 | 3 |
+| 66 × `ş` + `🐶` + 66 × `ş` | | ucs2 | 134 | 3 |
+| 77 × `ş` | açık | gsm7tr | 154 | 1 |
+| 78 × `ş` | açık | gsm7tr | 156 | 2 |
+| `ĞİŞçğışÇÖÜ` | açık | gsm7tr | 17 | 1 |
+| 160 × `a` | açık | gsm7 | 160 | 1 |
+| `Âş` | açık | ucs2 | 2 | 1 |
 
-Sayaç metni: `<n> karakter · <n> SMS parçası · GSM-7|Türkçe (UCS-2) · parçada kalan <n>`.
+Kaydırma tablosu kapalıyken tek `ç` veya `ı` içeren bir gövde, önek ve kuyruk ASCII
+olsa bile **tüm iletiyi** UCS-2'ye geçirir; SMS başına sınır 160/153 değil 70/67 olur.
+Netgsm'de aynı gövde `gsm7tr` kalır (155/149; Türkçe harf 2 birim).
+
+Sayaç metni: `<n> karakter · <n> SMS parçası · GSM-7|GSM-7 Türkçe|Türkçe (UCS-2) · parçada kalan <n>`.
 Üst sınır `MAX_MESSAGE_LENGTH` = **460** (önek + gövde + kuyruk). Gövde tavanı
 `MAX_BODY_LENGTH` = **320**.
 
@@ -160,7 +184,7 @@ Elle gönderim (atlanan `state` hariç) `master.db` `audit_log` satırına yazı
 | `original_length` | orijinal gövdenin (boşluklar tek satıra indirilmiş) karakter sayısı |
 | `new_length` | gönderilen gövdenin karakter sayısı |
 | `segments` | tam metnin SMS parça sayısı (`smsSegments`) |
-| `encoding` | `gsm7` veya `ucs2` |
+| `encoding` | `gsm7`, `gsm7tr` veya `ucs2` |
 | `ok` | sağlayıcı çağrısı başarılıysa `true` |
 
 **Tutulmayanlar:** telefon numarası, sahip adı, gövde metni, tam SMS metni.
