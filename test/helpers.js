@@ -90,7 +90,7 @@ export async function startApp() {
   const { config } = await import('../src/config.js');
   await initAuth();
   const app = createApp();
-  const server = app.listen(0);
+  const server = app.listen(0, '127.0.0.1'); // yalnız yerel arayüz (base ile aynı adres)
   await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
   // Port ancak listen sonrası belli olur; Origin denetimi tam origin karşılaştırdığı için eşitle.

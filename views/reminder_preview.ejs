@@ -18,7 +18,7 @@
   const seg = parts.segments;
   const tail = [parts.identity, parts.optOut].filter(Boolean).join(' ');
   // Sayaç metni public/app.js smsCounterText ile aynı biçimdedir (JS kapalıyken de doğru ilk değer görünür).
-  const encLabel = seg.encoding === 'gsm7' ? 'GSM-7' : 'Türkçe (UCS-2)';
+  const encLabel = seg.encoding === 'gsm7' ? 'GSM-7' : (seg.encoding === 'gsm7tr' ? 'GSM-7 Türkçe' : 'Türkçe (UCS-2)');
   const overLimit = parts.full.length > maxTotal;
 %>
 <a class="back-link" href="/sahipler/<%= reminder.owner_id %>"><%- icon('arrow-left') %><%= reminder.owner_name %></a>
@@ -39,7 +39,7 @@
       <label for="sms-body">Mesaj gövdesi <span class="sms-label-note">yalnız bu kısım düzenlenebilir</span></label>
       <textarea id="sms-body" name="body" rows="5" maxlength="<%= parts.maxBodyLength %>" data-sms-body
         data-prefix="<%= parts.prefix %>" data-tail="<%= tail ? ' ' + tail : '' %>" data-max-total="<%= maxTotal %>"
-        data-original="<%= parts.originalBody %>" aria-describedby="sms-counter sms-lock-help" spellcheck="true" autocapitalize="sentences"><%= bodyValue %></textarea>
+        data-original="<%= parts.originalBodyOneLine %>" data-tr-shift="<%= parts.turkishShift ? 1 : 0 %>" aria-describedby="sms-counter sms-lock-help" spellcheck="true" autocapitalize="sentences"><%= bodyValue %></textarea>
       <div class="sms-counter-row">
         <output id="sms-counter" class="sms-counter<%= overLimit ? ' is-over' : '' %>" data-sms-counter for="sms-body" aria-live="polite"><%= parts.full.length %> karakter · <%= seg.segments %> SMS parçası · <%= encLabel %> · parçada kalan <%= seg.remainingInSegment %></output>
         <span class="sms-counter-max">Üst sınır <%= maxTotal %></span>

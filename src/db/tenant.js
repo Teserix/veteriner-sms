@@ -134,6 +134,10 @@ export const TENANT_MIGRATIONS = [
     actor      TEXT
   );
   `,
+  // elle düzenlenmiş SMS gövdesi: sağlayıcı hatasından sonraki otomatik tekrar da aynı metni gönderir
+  `
+  ALTER TABLE reminders ADD COLUMN body_override TEXT;
+  `,
 ];
 
 // Kimlik, telefon ve iptal satırı gönderimde sistemce eklenir (src/sms/policy.js); şablon yalnızca gövdedir.
@@ -355,7 +359,7 @@ export const reminders = {
   setStatus: (db, id, status) => db.prepare('UPDATE reminders SET status = ? WHERE id = ?').run(status, id),
   resetForRetry: (db, id) => db.prepare(`UPDATE reminders SET status = 'pending', attempts = 0, last_error = NULL, last_attempt_at = NULL WHERE id = ?`).run(id),
   /** Tarih değişince gönderilmiş/başarısız hatırlatmayı yeniden beklemeye alır */
-  reopen: (db, id) => db.prepare(`UPDATE reminders SET status = 'pending', attempts = 0, last_error = NULL, last_attempt_at = NULL, sent_at = NULL WHERE id = ?`).run(id),
+  reopen: (db, id) => db.prepare(`UPDATE reminders SET status = 'pending', body_override = NULL, attempts = 0, last_error = NULL, last_attempt_at = NULL, sent_at = NULL WHERE id = ?`).run(id),
   /** Gönderimden hemen önce iz bırakır: çökme/yeniden başlatmada aynı hatırlatma 4 saat içinde tekrar gönderilmez */
   claim: (db, id, at) => db.prepare(`UPDATE reminders SET last_attempt_at = ? WHERE id = ? AND status = 'pending'`).run(at, id).changes,
   setLastAttempt: (db, id, value) => db.prepare('UPDATE reminders SET last_attempt_at = ? WHERE id = ?').run(value, id),
@@ -363,11 +367,12 @@ export const reminders = {
     Boolean(db.prepare(`SELECT 1 FROM reminders WHERE pet_id = ? AND title = ? AND due_date = ? AND status = 'pending' LIMIT 1`).get(petId, title, dueDate)),
   /** Kalıcı olarak başarısız olanlar (panelde gösterilir) */
   failedList: (db) => db.prepare(`${REMINDER_SELECT} WHERE r.status = 'failed' ORDER BY r.due_date DESC LIMIT 100`).all(),
-  markSent: (db, id, at) => db.prepare(`UPDATE reminders SET status = 'sent', sent_at = ?, attempts = attempts + 1, last_attempt_at = ?, last_error = NULL WHERE id = ?`).run(at, at, id),
+  markSent: (db, id, at) => db.prepare(`UPDATE reminders SET status = 'sent', body_override = NULL, sent_at = ?, attempts = attempts + 1, last_attempt_at = ?, last_error = NULL WHERE id = ?`).run(at, at, id),
   markAttemptFailed: (db, id, at, error, maxAttempts) => db.prepare(`
     UPDATE reminders SET attempts = attempts + 1, last_attempt_at = ?, last_error = ?,
       status = CASE WHEN attempts + 1 >= ? THEN 'failed' ELSE status END
     WHERE id = ?`).run(at, error, maxAttempts, id),
+  setBodyOverride: (db, id, body) => db.prepare('UPDATE reminders SET body_override = ? WHERE id = ?').run(body ?? null, id),
   delete: (db, id) => db.prepare('DELETE FROM reminders WHERE id = ?').run(id),
   countByStatus: (db) => db.prepare('SELECT status, COUNT(*) AS c FROM reminders GROUP BY status').all(),
 };

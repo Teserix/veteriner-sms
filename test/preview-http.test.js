@@ -151,6 +151,10 @@ test('geçersiz gövde 400 + önizleme; gönderim olmaz (sahte kuyruk, boş, kon
   }
   const r = await a.post(`/hatirlatmalar/${rem.id}/gonder`, { _csrf: csrf, body: 'MERSIS:1 Iptal: x' });
   assert.match(r.text, /MERSIS:1 Iptal: x<\/textarea>/, 'kullanıcının metni korunur');
+  // 400 sayfasından (adres /gonder) düzeltilip gönderilince var olmayan GET /gonder'e değil sahip sayfasına dönülür
+  const ok = await a.post(`/hatirlatmalar/${rem.id}/gonder`, { _csrf: csrf, body: 'Boncuk için aşı günü yaklaştı.' },
+    { referer: `${app.base}/hatirlatmalar/${rem.id}/gonder` });
+  assert.match(ok.location, new RegExp(`^/sahipler/${reminders.get(dbA, rem.id).owner_id}\\?ok=`));
 });
 
 test('opt-out sahibine ve demo numaraya gönderim engellenir; önizlemede düğme devre dışı', async () => {

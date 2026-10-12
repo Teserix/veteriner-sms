@@ -8,30 +8,49 @@ document.addEventListener('submit', function (e) {
 
 // SMS-SAYAC-BASLA
 // SMS parça hesabı: src/sms/policy.js smsSegments ile birebir aynı (test/sms-counter-parity.test.js doğrular).
-// GSM 03.38 temel + genişletme tablosu; Türkçe kaydırma tablosu yok. Temel tabloda olmayan tek karakter
-// (ş, ğ, ı, İ...) bütün mesajı UCS-2'ye geçirir (70/67); genişletme karakterleri GSM-7'de 2 birimdir.
-var SMS_LIMITS = { gsm7: { single: 160, multi: 153 }, ucs2: { single: 70, multi: 67 } };
+// GSM 03.38 temel + genişletme tablosu (2 birim). Türkçe tek kaydırma tablosu (Ğ İ Ş ç ğ ı ş = 2 birim, 155/149)
+// yalnızca opts.turkishShift ile (Netgsm); aksi hâlde tabloda olmayan tek karakter mesajı UCS-2'ye geçirir (70/67).
+// 2 birimlik karakter (genişletme çifti / vekil çift) parça sınırında bölünmez.
+var SMS_LIMITS = { gsm7: { single: 160, multi: 153 }, gsm7tr: { single: 155, multi: 149 }, ucs2: { single: 70, multi: 67 } };
 var GSM7_BASIC = '@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&\'()*+,-./0123456789:;<=>?' +
   '¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà';
 var GSM7_EXT = '^{}\\[~]|€';
-function smsSegments(text) {
+var GSM7_TR_SHIFT = 'ĞİŞçğış';
+function smsSegments(text, opts) {
   var s = String(text == null ? '' : text);
-  var gsmUnits = 0;
+  var turkishShift = !!(opts && opts.turkishShift);
   var encoding = 'gsm7';
-  // UTF-16 birimi bazında dolaşılır; tablolarda vekil (surrogate) yok, bu yüzden policy.js'teki for...of ile aynı sonuç
-  for (var i = 0; i < s.length; i++) {
-    var ch = s.charAt(i);
-    if (GSM7_BASIC.indexOf(ch) !== -1) gsmUnits += 1;
-    else if (GSM7_EXT.indexOf(ch) !== -1) gsmUnits += 2;
+  var sizes = [];
+  var i, ch;
+  // Tablolarda vekil (surrogate) yok: vekil çift UCS-2'ye geçirir, bu yüzden policy.js'teki for...of ile aynı sonuç
+  for (i = 0; i < s.length; i++) {
+    ch = s.charAt(i);
+    if (GSM7_BASIC.indexOf(ch) !== -1) sizes.push(1);
+    else if (GSM7_EXT.indexOf(ch) !== -1) sizes.push(2);
+    else if (turkishShift && GSM7_TR_SHIFT.indexOf(ch) !== -1) { sizes.push(2); encoding = 'gsm7tr'; }
     else { encoding = 'ucs2'; break; }
   }
-  var units = encoding === 'gsm7' ? gsmUnits : s.length;
+  if (encoding === 'ucs2') {
+    sizes = [];
+    for (i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      var d = s.charCodeAt(i + 1);
+      if (c >= 0xD800 && c <= 0xDBFF && d >= 0xDC00 && d <= 0xDFFF) { sizes.push(2); i++; } else sizes.push(1);
+    }
+  }
+  var units = 0;
+  for (i = 0; i < sizes.length; i++) units += sizes[i];
   var single = SMS_LIMITS[encoding].single;
   var multi = SMS_LIMITS[encoding].multi;
-  var segments = units === 0 ? 0 : (units <= single ? 1 : Math.ceil(units / multi));
-  var perSegment = segments > 1 ? multi : single;
-  var remainingInSegment = segments === 0 ? single : segments * perSegment - units;
-  return { encoding: encoding, units: units, segments: segments, perSegment: perSegment, remainingInSegment: remainingInSegment };
+  if (units === 0) return { encoding: encoding, units: 0, segments: 0, perSegment: single, remainingInSegment: single };
+  if (units <= single) return { encoding: encoding, units: units, segments: 1, perSegment: single, remainingInSegment: single - units };
+  var segments = 1;
+  var used = 0;
+  for (i = 0; i < sizes.length; i++) {
+    if (used + sizes[i] > multi) { segments += 1; used = 0; }
+    used += sizes[i];
+  }
+  return { encoding: encoding, units: units, segments: segments, perSegment: multi, remainingInSegment: multi - used };
 }
 // SMS-SAYAC-BITIS
 
@@ -41,7 +60,12 @@ function smsNormalizeBody(body) { return String(body || '').replace(/\s+/g, ' ')
 // Önizleme ekranındaki sayaç metni (views/reminder_preview.ejs ilk değeriyle aynı biçim)
 function smsCounterText(full, seg) {
   return full.length + ' karakter · ' + seg.segments + ' SMS parçası · ' +
-    (seg.encoding === 'gsm7' ? 'GSM-7' : 'Türkçe (UCS-2)') + ' · parçada kalan ' + seg.remainingInSegment;
+    smsEncodingLabel(seg.encoding) + ' · parçada kalan ' + seg.remainingInSegment;
+}
+
+// views/reminder_preview.ejs encLabel ile aynı
+function smsEncodingLabel(enc) {
+  return enc === 'gsm7' ? 'GSM-7' : (enc === 'gsm7tr' ? 'GSM-7 Türkçe' : 'Türkçe (UCS-2)');
 }
 
 (function () {
@@ -60,10 +84,10 @@ function smsCounterText(full, seg) {
     var body = ta.value.replace(/\{(\w+)\}/g, function (m, k) { return sample[k] != null ? sample[k] : m; }).replace(/\s+/g, ' ').trim();
     var t = 'Bilgilendirme: ' + body + (tail ? ' ' + tail : '');
     out.textContent = t;
-    var p = smsSegments(t);
+    var p = smsSegments(t, { turkishShift: out.dataset.trShift === '1' });
     if (len) len.textContent = t.length + ' karakter (kuyruk dahil)';
     if (meter) {
-      meter.textContent = p.segments + ' SMS' + (p.encoding === 'ucs2' ? ' · Türkçe karakter var (SMS başına 70/67 karakter)' : ' · SMS başına 160/153 karakter');
+      meter.textContent = p.segments + ' SMS' + ' · SMS başına ' + SMS_LIMITS[p.encoding].single + '/' + SMS_LIMITS[p.encoding].multi + ' karakter' + (p.encoding === 'gsm7' ? '' : ' (Türkçe karakter var)');
       meter.className = 'badge plain ' + (p.segments >= 3 ? 'failed' : (p.segments === 2 ? 'pending' : 'ok'));
     }
   }
@@ -87,11 +111,12 @@ function smsCounterText(full, seg) {
   var maxTotal = parseInt(ta.getAttribute('data-max-total'), 10) || 0;
   var maxBody = parseInt(ta.getAttribute('maxlength'), 10) || 0;
   var original = ta.getAttribute('data-original') || '';
+  var segOpts = { turkishShift: ta.getAttribute('data-tr-shift') === '1' };
 
   function render() {
     var body = smsNormalizeBody(ta.value);
     var text = prefix + body + tail;
-    var seg = smsSegments(text);
+    var seg = smsSegments(text, segOpts);
     var over = (maxTotal && text.length > maxTotal) || (maxBody && body.length > maxBody);
     var empty = body === '';
     if (full) full.textContent = text;

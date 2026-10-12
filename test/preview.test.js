@@ -99,7 +99,7 @@ describe('smsSegments', () => {
   for (const v of vectors) {
     test(v.name, () => {
       const text = v.text ?? v.char.repeat(v.count);
-      const r = smsSegments(text);
+      const r = smsSegments(text, { turkishShift: !!v.turkishShift });
       assert.equal(r.encoding, v.encoding);
       assert.equal(r.units, v.units);
       assert.equal(r.segments, v.segments);
@@ -164,5 +164,49 @@ describe('dispatch son kilidi ve düzenlenmiş gövdeyle gönderim', () => {
     const rid = seedReminder(db);
     const res = await sendReminderSms(id, db, getSettings(db), reminders.get(db, rid), 't');
     assert.equal(res.ok, true);
+  });
+
+  test('sağlayıcı hatasından sonraki otomatik tekrar düzenlenmiş gövdeyi gönderir', async () => {
+    const { id, db } = makeClinic();
+    const rid = seedReminder(db);
+    const failing = { ...getSettings(db), sms_provider: 'netgsm' }; // hesap bilgisi yok -> sağlayıcı hatası
+    const first = await sendReminderSms(id, db, failing, reminders.get(db, rid), 't', new Date(), { bodyOverride: 'Boncuk için aşı günü.' });
+    assert.equal(first.ok, false);
+    assert.equal(first.skipped, undefined);
+    assert.equal(reminders.get(db, rid).body_override, 'Boncuk için aşı günü.');
+    db.prepare('UPDATE reminders SET last_attempt_at = NULL WHERE id = ?').run(rid);
+    const retry = await sendReminderSms(id, db, getSettings(db), reminders.get(db, rid), 'zamanlayici');
+    assert.equal(retry.ok, true);
+    assert.equal(retry.edited, true);
+    assert.match(retry.message, /^Bilgilendirme: Boncuk için aşı günü\. /);
+    assert.equal(reminders.get(db, rid).body_override, null);
+  });
+
+  test('değiştirilmemiş çok satırlı şablon olduğu gibi gönderilir (düzenlendi sayılmaz)', async () => {
+    const { id, db } = makeClinic();
+    const rid = seedReminder(db);
+    const s = { ...getSettings(db), template: 'Sayın {sahip},\n{hayvan} için {tur} zamanı.' };
+    const r = reminders.get(db, rid);
+    const original = previewParts(s, buildReminderVars(s, r), { clinicId: id }).originalBody;
+    assert.ok(original.includes('\n'));
+    const res = await sendReminderSms(id, db, s, r, 't', new Date(), { bodyOverride: original });
+    assert.equal(res.ok, true);
+    assert.equal(res.edited, false);
+    assert.equal(res.message, buildMessage(s, reminders.get(db, rid), id));
+  });
+
+  test('kilit beklenirken kayıt değişse de kullanıcının gördüğü gövde gönderilir; uzunluklar taze kayıttan', async () => {
+    const { id, db } = makeClinic();
+    const rid = seedReminder(db);
+    const s = getSettings(db);
+    const stale = reminders.get(db, rid);
+    const seen = previewParts(s, buildReminderVars(s, stale), { clinicId: id }).originalBody;
+    db.prepare('UPDATE pets SET name = ? WHERE id = ?').run('Pamuk', stale.pet_id);
+    const res = await sendReminderSms(id, db, s, stale, 't', new Date(), { bodyOverride: seen });
+    assert.equal(res.ok, true);
+    assert.ok(res.message.includes(seen.replace(/\s+/g, ' ').trim()));
+    assert.equal(res.edited, true);
+    const freshOriginal = previewParts(s, buildReminderVars(s, reminders.get(db, rid)), { clinicId: id }).originalBody;
+    assert.equal(res.originalLength, freshOriginal.replace(/\s+/g, ' ').trim().length);
   });
 });
