@@ -5,7 +5,8 @@
   // Sınıflar / data-* öznitelikleri (public/app.js ve CSS için sözleşme):
   //   .sms-preview            : ekranın kapsayıcısı
   //   .sms-preview-blockers   : gönderimi engelleyen durumlar için uyarı bandı (varsa düğme devre dışı)
-  //   .sms-saved-override     : kayıtlı düzenlenmiş gövde açıldığında bilgi bandı (data-original yine şablondur)
+  //   .sms-saved-override     : kayıtlı düzenlenmiş gövde açıldığında bilgi bandı (data-original yine şablondur);
+  //                             kayıtlı gövde geçersizse role=alert ve "gönderilemez" der (sorun listesi ayrı bantta)
   //   .sms-fixed              : salt okunur parçalar (önek, kimlik satırı, iptal satırı); input değil, metin
   //     .sms-prefix / .sms-identity / .sms-optout
   //   textarea[data-sms-body] : düzenlenebilir tek alan (name="body"), maxlength = MAX_BODY_LENGTH
@@ -13,6 +14,10 @@
   //     data-tail             : gövdeden sonra eklenen kuyruk (" <kimlik> <iptal>"; baştaki boşluk dahil)
   //     data-max-total        : önek + gövde + kuyruk için üst sınır (MAX_MESSAGE_LENGTH)
   //     data-original         : şablondan çıkan orijinal gövde ("Orijinale dön" için)
+  //     data-server-blocked   : "1" ise gönderim gövdeden bağımsız engelli (blockers); istemci Gönder'i asla açmaz
+  //     data-invalid-body     : "1" ise sunucu bu gövdeyi geçersiz buldu (bodyProblems); gövde bu ilk değerdeyken
+  //                             Gönder kapalı kalır, kullanıcı değiştirince istemci denetimi geçer (POST'ta yine sunucu)
+  //   button[type=submit]     : canSend = blokaj yok VE gövde sorunu yok; değilse sunucuda disabled çizilir
   //   output[data-sms-counter]: canlı karakter/parça sayacı; JS yoksa sunucunun hesapladığı ilk değer görünür
   //   [data-sms-reset]        : "Orijinale dön" düğmesi (JS yoksa type=reset formu ilk değerine döndürür)
   //   .sms-full               : gönderilecek tam metin (sunucu hesabı)
@@ -37,13 +42,17 @@
     <input type="hidden" name="_csrf" value="<%= csrf %>">
     <div class="sms-editor">
       <% if (typeof savedOverride !== 'undefined' && savedOverride) { %>
+      <% if (bodyInvalid) { %>
+      <div class="alert warn sms-saved-override" role="alert"><%- icon('alert') %><span>Bu hatırlatma için kayıtlı düzenlenmiş gövde geçersiz; bu haliyle gönderilemez ve zamanlayıcı da göndermez. Gövdeyi düzeltin ya da "Orijinale dön"e basın.</span></div>
+      <% } else { %>
       <div class="alert warn sms-saved-override" role="status"><%- icon('alert') %><span>Bu hatırlatma için daha önce düzenlenmiş bir gövde kayıtlı; gönderimde bu metin kullanılır. Şablona dönmek için "Orijinale dön"e basın.</span></div>
+      <% } %>
       <% } %>
       <div class="sms-fixed sms-prefix" title="Sistem tarafından eklenir"><%- icon('shield', 'sms-lock') %><span><%= parts.prefix %></span><span class="sms-fixed-tag">Sabit</span></div>
       <label for="sms-body">Mesaj gövdesi <span class="sms-label-note">yalnız bu kısım düzenlenebilir</span></label>
       <textarea id="sms-body" name="body" rows="5" maxlength="<%= parts.maxBodyLength %>" data-sms-body
         data-prefix="<%= parts.prefix %>" data-tail="<%= tail ? ' ' + tail : '' %>" data-max-total="<%= maxTotal %>"
-        data-original="<%= parts.originalBodyOneLine %>" data-tr-shift="<%= parts.turkishShift ? 1 : 0 %>" aria-describedby="sms-counter sms-lock-help" spellcheck="true" autocapitalize="sentences"><%= bodyValue %></textarea>
+        data-original="<%= parts.originalBodyOneLine %>" data-tr-shift="<%= parts.turkishShift ? 1 : 0 %>" data-server-blocked="<%= blockers.length ? 1 : 0 %>"<% if (bodyInvalid) { %> data-invalid-body="1" aria-invalid="true"<% } %> aria-describedby="sms-counter sms-lock-help" spellcheck="true" autocapitalize="sentences"><%= bodyValue %></textarea>
       <div class="sms-counter-row">
         <output id="sms-counter" class="sms-counter<%= overLimit ? ' is-over' : '' %>" data-sms-counter for="sms-body" aria-live="polite"><%= parts.full.length %> karakter · <%= seg.segments %> SMS parçası · <%= encLabel %> · parçada kalan <%= seg.remainingInSegment %></output>
         <span class="sms-counter-max">Üst sınır <%= maxTotal %></span>

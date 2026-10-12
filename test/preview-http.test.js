@@ -202,14 +202,45 @@ test('kayıtlı body_override yokken (ya da şablonla aynıyken) bilgi bandı yo
   assert.ok(!page.text.includes(SAVED_BANNER));
 });
 
-test('kayıtlı gövde sonradan geçersizse önizleme 200 ve sorunu listeler', async () => {
+const INVALID_BANNER = 'kayıtlı düzenlenmiş gövde geçersiz';
+const savedBand = (html) => /<div class="alert warn sms-saved-override"[^>]*>[\s\S]*?<\/div>/.exec(html)?.[0] ?? '';
+
+test('kayıtlı gövde sonradan geçersizse önizleme 200, sorunu listeler; band "gönderilir" demez, Gönder kapalı', async () => {
+  for (const [i, saved] of ['MERSIS:1 Iptal: x', 'Merhaba\u0007zil'].entries()) {
+    const { rem } = await quick(a, { phone: '0532111002' + i });
+    reminders.setBodyOverride(dbA, rem.id, saved);
+    const page = await a.get(`/hatirlatmalar/${rem.id}/onizle`);
+    assert.equal(page.status, 200);
+    assert.match(page.text, /<div class="flash err" role="alert">/);
+    const band = savedBand(page.text);
+    assert.ok(band.includes(INVALID_BANNER), band);
+    assert.match(band, /role="alert"/);
+    assert.ok(!band.includes('gönderimde bu metin kullanılır'), band);
+    assert.ok(!page.text.includes(SAVED_BANNER));
+    assert.match(page.text, /type="submit" disabled/);
+    assert.match(page.text, /data-invalid-body="1"/);
+    assert.match(page.text, /data-server-blocked="0"/, 'gövde sorunu sunucu blokajı sayılmaz (istemci düzeltmeye izin verir)');
+  }
   const { rem } = await quick(a, { phone: '05321110012' });
   reminders.setBodyOverride(dbA, rem.id, 'MERSIS:1 Iptal: x');
   const page = await a.get(`/hatirlatmalar/${rem.id}/onizle`);
-  assert.equal(page.status, 200);
-  assert.ok(page.text.includes(SAVED_BANNER));
-  assert.match(page.text, /<div class="flash err" role="alert">/);
   assert.match(page.text, /MERSIS:1 Iptal: x<\/textarea>/);
+});
+
+test('geçerli kayıtlı gövde: Gönder açık, mevcut bilgi bandı; blokajsız sayfa data-server-blocked="0"', async () => {
+  const { rem } = await quick(a, { phone: '05321110030' });
+  let page = await a.get(`/hatirlatmalar/${rem.id}/onizle`);
+  assert.match(page.text, /data-server-blocked="0"/);
+  assert.doesNotMatch(page.text, /data-invalid-body/);
+  reminders.setBodyOverride(dbA, rem.id, 'Pamuk için aşı günü geldi, sizi bekliyoruz.');
+  page = await a.get(`/hatirlatmalar/${rem.id}/onizle`);
+  assert.equal(page.status, 200);
+  const band = savedBand(page.text);
+  assert.ok(band.includes(SAVED_BANNER) && band.includes('gönderimde bu metin kullanılır'), band);
+  assert.ok(!band.includes(INVALID_BANNER));
+  assert.doesNotMatch(page.text, /type="submit" disabled/);
+  assert.doesNotMatch(page.text, /data-invalid-body/);
+  assert.match(page.text, /data-server-blocked="0"/);
 });
 
 test('opt-out sahibine ve demo numaraya gönderim engellenir; önizlemede düğme devre dışı', async () => {
@@ -217,6 +248,7 @@ test('opt-out sahibine ve demo numaraya gönderim engellenir; önizlemede düğm
   let page = await a.get(`/hatirlatmalar/${off.rem.id}/onizle`);
   assert.match(page.text, /sms-preview-blockers/);
   assert.match(page.text, /type="submit" disabled/);
+  assert.match(page.text, /data-server-blocked="1"/);
   const n = sent.length;
   let r = await a.post(`/hatirlatmalar/${off.rem.id}/gonder`, { _csrf: off.csrf, body: 'Merhaba' });
   assert.match(r.location, /err=/);

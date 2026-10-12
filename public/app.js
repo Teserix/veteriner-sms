@@ -104,8 +104,10 @@ function smsEncodingLabel(enc) {
   var full = document.querySelector('.sms-full');
   var reset = document.querySelector('[data-sms-reset]');
   var submit = form ? form.querySelector('button[type="submit"]') : null;
-  // Sunucu engel nedeniyle düğmeyi kapattıysa (kimlik eksik, SMS izni yok...) istemci asla açmaz
-  var lockedByServer = submit ? submit.disabled : true;
+  // Sunucu engel bildirdiyse (kimlik eksik, SMS izni yok...) istemci düğmeyi asla açmaz
+  var lockedByServer = !submit || ta.getAttribute('data-server-blocked') === '1';
+  // Sunucunun geçersiz bulduğu gövde (örn. kayıtlı body_override): değiştirilmedikçe Gönder kapalı kalır
+  var invalidBody = ta.getAttribute('data-invalid-body') === '1' ? smsNormalizeBody(ta.value) : null;
   var prefix = ta.getAttribute('data-prefix') || '';
   var tail = ta.getAttribute('data-tail') || '';
   var maxTotal = parseInt(ta.getAttribute('data-max-total'), 10) || 0;
@@ -126,9 +128,10 @@ function smsEncodingLabel(enc) {
       counter.classList.toggle('is-over', !!(over || empty));
       counter.classList.toggle('is-multi', !over && !empty && seg.segments > 1);
     }
-    ta.classList.toggle('is-invalid', !!(over || empty));
-    ta.setAttribute('aria-invalid', over || empty ? 'true' : 'false');
-    if (submit && !lockedByServer) submit.disabled = !!(over || empty);
+    var serverInvalid = invalidBody !== null && body === invalidBody;
+    ta.classList.toggle('is-invalid', !!(over || empty || serverInvalid));
+    ta.setAttribute('aria-invalid', over || empty || serverInvalid ? 'true' : 'false');
+    if (submit && !lockedByServer) submit.disabled = !!(over || empty || serverInvalid);
     if (reset) reset.disabled = smsNormalizeBody(ta.value) === smsNormalizeBody(original);
   }
 
