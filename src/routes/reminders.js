@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { requireRole } from '../auth.js';
-import { pets, reminders, getSettings } from '../db/tenant.js';
-import { sendReminderSms } from '../scheduler.js';
-import { contentProblems } from '../sms/policy.js';
+import { pets, reminders, getSettings, legalProblems } from '../db/tenant.js';
+import { sendReminderSms, buildReminderVars, ensureOptOutToken } from '../scheduler.js';
+import { contentProblems, previewParts, bodyProblems, smsSegments } from '../sms/policy.js';
 import { limiters } from '../ratelimit.js';
-import { trim, toInt, nowIso, isValidDate, todayLocal, addDays, returnTo, withFlash, REMINDER_TYPES } from '../util.js';
+import { MAX_MESSAGE_LENGTH } from '../sms/index.js';
+import { audit } from '../audit.js';
+import { trim, toInt, nowIso, isValidDate, todayLocal, addDays, returnTo, withFlash, isDemoPhone, REMINDER_TYPES } from '../util.js';
 
 export const remindersRouter = Router();
 
@@ -109,21 +111,84 @@ remindersRouter.post('/hatirlatmalar/:id/sil', requireRole('admin'), (req, res) 
   res.redirect(`/sahipler/${r.owner_id}?ok=` + encodeURIComponent('Hatırlatma silindi.'));
 });
 
-/** Elle "şimdi gönder" */
+const CLOSED_STATUSES = ['sent', 'done', 'cancelled'];
+
+/** composeMessage'in gövdeye uyguladığı boşluk normalleştirmesi (orijinal/düzenlenmiş karşılaştırması ve uzunluk için) */
+const oneLine = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+
+/** Gönderimi engelleyecek durumlar (önizlemede uyarı bandı + devre dışı düğme; sunucu korumaları yine ayrıca geçerlidir) */
+function sendBlockers(settings, r) {
+  const out = [];
+  if (!r.sms_opt_in) out.push('Bu hasta sahibi SMS almak istemiyor (ret kaydı var).');
+  if (isDemoPhone(r.owner_phone)) out.push('Bu bir demo numarası; SMS hiçbir sağlayıcıya gönderilmez.');
+  const legal = legalProblems(settings);
+  if (legal.length) out.push('Gönderim kilitli: Ayarlar > Hukuki kimlik eksik (' + legal[0] + ').');
+  if (CLOSED_STATUSES.includes(r.status)) out.push('Bu hatırlatma için SMS zaten gönderilmiş ya da kapatılmış.');
+  return out;
+}
+
+/** Önizleme ekranının modeli: mesaj policy.previewParts'tan gelir (gönderimle aynı fonksiyon); rotada yeniden kurulmaz */
+function renderPreview(req, res, r, settings, { body, problems = [], status = 200 } = {}) {
+  const parts = previewParts(settings, buildReminderVars(settings, r), {
+    clinicId: req.user.clinicId, optOutToken: r.opt_out_token || '', bodyOverride: body,
+  });
+  const blockers = sendBlockers(settings, r);
+  res.status(status).render('reminder_preview', {
+    title: 'SMS önizleme', reminder: r, parts, problems, blockers, canSend: blockers.length === 0,
+    bodyValue: body ?? parts.originalBody, maxTotal: MAX_MESSAGE_LENGTH,
+  });
+}
+
+/**
+ * Gönderim öncesi tam önizleme. Ret belirteci yoksa burada üretilir (ensureOptOutToken): GET'te yan etkidir ama
+ * kabul edildi; böylece önizlenen iptal bağlantısı gönderilecek olanla birebir aynıdır (yer tutucu URL gösterilmez).
+ */
+remindersRouter.get('/hatirlatmalar/:id/onizle', (req, res) => {
+  const r = reminders.get(req.db, toInt(req.params.id));
+  if (!r) return notFound(res);
+  r.opt_out_token = ensureOptOutToken(req.db, r.owner_id, r.opt_out_token);
+  renderPreview(req, res, r, getSettings(req.db));
+});
+
+/** Elle "şimdi gönder"; isteğe bağlı 'body' alanı önizlemede düzenlenmiş gövdedir (önek/kimlik/iptal sunucuda eklenir) */
 remindersRouter.post('/hatirlatmalar/:id/gonder', limiters.manualSms.middleware((req) => 'c:' + req.user.clinicId, 'Saatte en fazla 30 elle gönderim yapılabilir.'), async (req, res) => {
   let r = reminders.get(req.db, toInt(req.params.id));
   if (!r) return notFound(res);
-  const back = returnTo(req, `/sahipler/${r.owner_id}`);
+  let back = returnTo(req, `/sahipler/${r.owner_id}`);
+  if (back.startsWith(`/hatirlatmalar/${r.id}/onizle`)) back = `/sahipler/${r.owner_id}`;
   if (!r.sms_opt_in) return res.redirect(withFlash(back, 'err', 'Bu hasta sahibi SMS almak istemiyor.'));
-  if (r.status === 'sent' || r.status === 'done' || r.status === 'cancelled') {
+  if (CLOSED_STATUSES.includes(r.status)) {
     return res.redirect(withFlash(back, 'err', 'Bu hatırlatma için SMS zaten gönderilmiş ya da kapatılmış.'));
   }
+  const settings = getSettings(req.db);
+  const clinicId = req.user.clinicId;
+
+  let bodyOverride;
+  if (typeof req.body.body === 'string') {
+    r.opt_out_token = ensureOptOutToken(req.db, r.owner_id, r.opt_out_token);
+    const problems = bodyProblems(req.body.body, settings, { clinicId, optOutToken: r.opt_out_token });
+    if (problems.length) return renderPreview(req, res, r, settings, { body: req.body.body, problems, status: 400 });
+    const original = previewParts(settings, buildReminderVars(settings, r), { clinicId, optOutToken: r.opt_out_token }).originalBody;
+    if (oneLine(req.body.body) !== oneLine(original)) bodyOverride = req.body.body;
+  }
+
   if (r.status === 'failed' || r.attempts > 0) {
     reminders.resetForRetry(req.db, r.id);
     r = reminders.get(req.db, r.id);
   }
-  const settings = getSettings(req.db);
-  const result = await sendReminderSms(req.user.clinicId, req.db, settings, r, req.user.email);
+  const result = await sendReminderSms(clinicId, req.db, settings, r, req.user.email, new Date(), { bodyOverride });
+  if (result.skipped !== 'state') {
+    // Denetim: yalnız uzunluk/parça/bayrak; telefon, sahip adı ve gövde metni yazılmaz
+    const after = previewParts(settings, buildReminderVars(settings, r), { clinicId, optOutToken: r.opt_out_token || '', bodyOverride });
+    const seg = result.message ? smsSegments(result.message) : after.segments;
+    audit(req, 'reminder.sms_send', {
+      clinicId, entityType: 'reminder', entityId: r.id,
+      meta: {
+        edited: after.edited, original_length: oneLine(after.originalBody).length, new_length: after.body.length,
+        segments: seg.segments, encoding: seg.encoding, ok: !!result.ok,
+      },
+    });
+  }
   if (result.ok) return res.redirect(withFlash(back, 'ok', 'SMS gönderildi: ' + r.owner_name));
   res.redirect(withFlash(back, 'err', 'Gönderilemedi: ' + result.error));
 });
