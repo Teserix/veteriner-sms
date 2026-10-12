@@ -17,6 +17,7 @@ import { quickRouter } from './routes/quick.js';
 import { importRouter } from './routes/import.js';
 import { publicRouter } from './routes/public.js';
 import { legalRouter } from './routes/legal.js';
+import { tourRouter } from './routes/tour.js';
 import { log } from './log.js';
 import { formatPhone, formatDate, formatDateTime, REMINDER_TYPES, STATUS_LABELS, SPECIES } from './util.js';
 
@@ -39,6 +40,17 @@ function icon(name, cls = '') {
   return `<svg class="icon${cls ? ' ' + cls : ''}" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg?v=${ASSET_VERSION}#i-${name}"/></svg>`;
 }
 
+/**
+ * Header'daki _tourAuto: klinik kullanıcısı, parolasını değiştirmiş ve turu henüz görmemişse.
+ * Süper yönetici adımları klinik ekranlarına ait olduğu için false.
+ */
+function tourAutoFor(req) {
+  const u = req.user;
+  if (!u || u.role === 'superadmin' || !u.clinicId || u.mustChangePassword) return false;
+  const seen = req.session ? req.session.tour_seen_at : null;
+  return seen == null || seen === '';
+}
+
 /** Express uygulamasını kurar (dinlemez). Testler doğrudan bunu kullanır. */
 export function createApp() {
   const app = express();
@@ -50,7 +62,7 @@ export function createApp() {
 
   // Görünüm varsayılanları: erken hata sayfaları (CSRF 403, 404, 500) bile güvenle render edilir
   Object.assign(app.locals, {
-    user: null, csrf: '', settings: {}, currentPath: '', flash: { ok: '', err: '' },
+    user: null, csrf: '', settings: {}, currentPath: '', flash: { ok: '', err: '' }, tourAuto: false, _tourAuto: false,
     formatPhone, formatDate, formatDateTime, REMINDER_TYPES, STATUS_LABELS, SPECIES,
     icon, assetV: ASSET_VERSION,
   });
@@ -108,6 +120,8 @@ export function createApp() {
       ok: typeof req.query.ok === 'string' ? req.query.ok.slice(0, 300) : '',
       err: typeof req.query.err === 'string' ? req.query.err.slice(0, 300) : '',
     };
+    res.locals.tourAuto = tourAutoFor(req);
+    res.locals._tourAuto = res.locals.tourAuto;
     next();
   });
 
@@ -119,6 +133,7 @@ export function createApp() {
   /* ---------- Rotalar ---------- */
   app.use(publicRouter);          // oturumsuz: hukuki metinler, iletişim, klinik aydınlatma, SMS ret bağlantısı
   app.use(authRouter);
+  app.use(tourRouter);            // POST /tur/goruldu — sözleşme kapısından önce; tur işareti klinik ekranına bağlı değil
   app.use('/admin', requireRole('superadmin'), adminRouter);
   app.use(legalAcceptanceGate);   // klinik yöneticisi güncel sözleşmeyi kabul etmeden klinik ekranlarına giremez
   app.use(legalRouter);

@@ -96,6 +96,10 @@ export const MASTER_MIGRATIONS = [
     created_at            TEXT NOT NULL
   );
   `,
+  // 4: karşılama turu — kullanıcı başına görüldü zamanı
+  `
+  ALTER TABLE users ADD COLUMN tour_seen_at TEXT;
+  `,
 ];
 
 export const master = new DatabaseSync(path.join(config.dataDir, 'master.db'), { timeout: 5000 });
@@ -159,6 +163,8 @@ export const users = {
   /** Kliniğin giriş yapabilen yönetici sayısı; sıfıra düşerse kliniği yalnızca süper yönetici kurtarabilir */
   activeAdminCount: (clinicId) => master.prepare("SELECT COUNT(*) AS c FROM users WHERE clinic_id = ? AND role = 'admin' AND active = 1").get(clinicId).c,
   touchLogin: (id, at) => master.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(at, id),
+  /** Karşılama turu görüldü. Yalnız verilen kullanıcı satırı; gövdedeki başka id yok sayılır. */
+  markTourSeen: (id, at) => master.prepare('UPDATE users SET tour_seen_at = ? WHERE id = ?').run(at, id),
   delete: (id) => master.prepare('DELETE FROM users WHERE id = ?').run(id),
 };
 
@@ -169,6 +175,7 @@ export const sessions = {
   get: (id) => master.prepare(`
     SELECT s.id AS session_id, s.csrf, s.expires_at,
            u.id AS user_id, u.email, u.name, u.role, u.clinic_id, u.active AS user_active, u.must_change_password,
+           u.tour_seen_at,
            c.name AS clinic_name, c.active AS clinic_active
     FROM sessions s
     JOIN users u ON u.id = s.user_id

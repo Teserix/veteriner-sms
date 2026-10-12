@@ -3,6 +3,7 @@
   const _path = (typeof currentPath === 'string') ? currentPath : '';
   const _flash = (typeof flash === 'object' && flash) ? flash : { ok: '', err: '' };
   const _csrf = (typeof csrf === 'string') ? csrf : '';
+  const _tourAuto = (typeof tourAuto !== 'undefined') ? Boolean(tourAuto) : false;
   const _title = (typeof title === 'string') ? title : '';
   const _legalLocked = (typeof legalLocked === 'boolean') ? legalLocked : false;
   const _openRequests = (typeof openRequests === 'number') ? openRequests : 0;
@@ -31,13 +32,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Vet SMS">
+  <% if (_user) { %><meta name="csrf-token" content="<%= _csrf %>"><% } %>
   <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
   <link rel="icon" href="/static/icons/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/static/icons/icon-192.png" sizes="192x192" type="image/png">
   <title><%= _title ? _title + ' · ' : '' %>Veteriner SMS</title>
   <link rel="stylesheet" href="/static/style.css<%= _v ? '?v=' + _v : '' %>">
 </head>
-<body class="<%= _user ? 'has-shell' : 'no-shell' %><%= isClinic ? ' has-tabbar' : '' %>">
+<body class="<%= _user ? 'has-shell' : 'no-shell' %><%= isClinic ? ' has-tabbar' : '' %>"<% if (_tourAuto) { %> data-tour-auto="1"<% } %>>
 <a class="skip-link" href="#main">İçeriğe geç</a>
 <% if (_user) { %>
 <div class="shell">
