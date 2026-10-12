@@ -65,7 +65,7 @@
     <section class="card flush" id="bugun" aria-labelledby="h-bugun">
       <div class="card-head">
         <div>
-          <h2 class="section-title" id="h-bugun">Bugün SMS'i gönderilecekler <span class="count-pill brand"><%= due.length %></span></h2>
+          <h2 class="section-title" id="h-bugun">Bugün SMS'i gönderilecekler<% if (due.length) { %> <span class="count-pill"><%= due.length %></span><% } %></h2>
           <p class="sub"><%= schedulerOn ? `Zamanlayıcı ${settings.send_hour_start}:00 – ${settings.send_hour_end}:00 arasında otomatik gönderir. Beklemeden göndermek için "Şimdi gönder"i kullanın.` : 'Otomatik gönderim kapalı; listedekileri elle gönderin.' %></p>
         </div>
       </div>
@@ -90,7 +90,7 @@
       <% if (overdue.length) { %>
       <div class="card-head<%= failed.length ? ' mt24' : '' %>">
         <div>
-          <h2 class="section-title"<%- failed.length ? '' : ' id="h-dikkat"' %>>Süresi geçmiş <span class="count-pill warn"><%= overdue.length %></span></h2>
+          <h2 class="section-title"<%- failed.length ? '' : ' id="h-dikkat"' %>>Süresi geçmiş <span class="count-pill"><%= overdue.length %></span></h2>
           <p class="sub">Randevu tarihi 3 günden fazla geçmiş ve SMS gönderilmemiş. Otomatik gönderilmez; isterseniz elle gönderin, tamamlayın ya da iptal edin.</p>
         </div>
       </div>
@@ -102,7 +102,7 @@
 
   <aside class="stack" aria-label="Yaklaşanlar">
     <section class="card flush" aria-labelledby="h-yarin">
-      <div class="card-head"><h2 class="section-title" id="h-yarin">Yarın gönderilecekler <span class="count-pill"><%= tomorrow.length %></span></h2></div>
+      <div class="card-head"><h2 class="section-title" id="h-yarin">Yarın gönderilecekler<% if (tomorrow.length) { %> <span class="count-pill"><%= tomorrow.length %></span><% } %></h2></div>
       <% if (!tomorrow.length) { %>
         <div class="empty-state compact"><span class="es-text">Yarın için hatırlatma yok.</span></div>
       <% } else { %>
@@ -131,7 +131,7 @@
             <div class="agenda-date"><%= dayLabel(g.day) %></div>
             <ul class="agenda-items">
               <% for (const r of g.items) { %>
-              <li><span class="a-main"><a href="/sahipler/<%= r.owner_id %>"><%= r.pet_name %></a> <span class="what">· <%= r.title %></span></span><span class="badge <%= r.status %>"><%= STATUS_LABELS[r.status] %></span></li>
+              <li><span class="a-main"><a href="/sahipler/<%= r.owner_id %>"><%= r.pet_name %></a> <span class="what">· <%= r.title %></span></span></li>
               <% } %>
             </ul>
           </li>

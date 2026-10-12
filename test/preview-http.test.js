@@ -270,7 +270,8 @@ test('JS kapalıyken "Orijinale dön": ?orijinal=1 şablon gövdesini açar, kay
     const n = sent.length;
     const r = await a.post(`/hatirlatmalar/${rem.id}/gonder`, { _csrf: csrf, body: textarea },
       { referer: `${app.base}/hatirlatmalar/${rem.id}/onizle?orijinal=1` });
-    assert.match(r.location, new RegExp(`^/sahipler/${rem.owner_id}\\?ok=`));
+    const ownerId = dbA.prepare('SELECT owner_id FROM pets WHERE id = ?').get(rem.pet_id).owner_id;
+    assert.match(r.location, new RegExp(`^/sahipler/${ownerId}\\?ok=`));
     assert.equal(sent.length, n + 1);
     assert.equal(sent.at(-1).message, fullOf(page.text));
     assert.ok(!sent.at(-1).message.includes(saved));
