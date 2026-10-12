@@ -19,7 +19,9 @@
   //                             Gönder kapalı kalır, kullanıcı değiştirince istemci denetimi geçer (POST'ta yine sunucu)
   //   button[type=submit]     : canSend = blokaj yok VE gövde sorunu yok; değilse sunucuda disabled çizilir
   //   output[data-sms-counter]: canlı karakter/parça sayacı; JS yoksa sunucunun hesapladığı ilk değer görünür
-  //   [data-sms-reset]        : "Orijinale dön" düğmesi (JS yoksa type=reset formu ilk değerine döndürür)
+  //   a[data-sms-reset]       : "Orijinale dön" bağlantısı (?orijinal=1); JS yoksa sunucu kayıtlı gövdeyi yok sayıp
+  //                             şablon gövdesini yükler (DB'ye dokunmaz). JS varken tıklama yerinde data-original'a
+  //                             döndürür; gövde zaten orijinalse aria-disabled="true" + .is-disabled alır
   //   .sms-full               : gönderilecek tam metin (sunucu hesabı)
   const seg = parts.segments;
   const tail = [parts.identity, parts.optOut].filter(Boolean).join(' ');
@@ -67,7 +69,7 @@
     </section>
     <div class="form-actions">
       <button class="btn" type="submit" <%= canSend ? '' : 'disabled' %>><%- icon('send') %>Gönder</button>
-      <button class="btn secondary" type="reset" data-sms-reset>Orijinale dön</button>
+      <a class="btn secondary" href="/hatirlatmalar/<%= reminder.id %>/onizle?orijinal=1" data-sms-reset>Orijinale dön</a>
     </div>
   </form>
 </div>

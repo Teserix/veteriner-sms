@@ -144,6 +144,9 @@ function renderPreview(req, res, r, settings, { body, problems = [], status = 20
  * kabul edildi; böylece önizlenen iptal bağlantısı gönderilecek olanla birebir aynıdır (yer tutucu URL gösterilmez).
  * Kayıtlı düzenlenmiş gövde (body_override, örn. başarısız gönderimden kalan) varsa o açılır; form onu POST ettiği için
  * gönderimde sessizce kaybolmaz. Sonradan geçersizleşmişse sorunlar listelenir (zamanlayıcı da onu göndermez).
+ * ?orijinal=1 ("Orijinale dön", JS kapalıyken de çalışır): kayıtlı gövde yok sayılıp şablon gövdesi açılır.
+ * body_override'a dokunulmaz; kullanıcı şablonla Gönder'e basarsa POST sameBody ile şablonu gönderir.
+ * Geri dönüş adresi Referer'dan gelir (returnTo); taşınacak bir sorgu parametresi yoktur.
  */
 remindersRouter.get('/hatirlatmalar/:id/onizle', (req, res) => {
   const r = reminders.get(req.db, toInt(req.params.id));
@@ -151,7 +154,7 @@ remindersRouter.get('/hatirlatmalar/:id/onizle', (req, res) => {
   r.opt_out_token = ensureOptOutToken(req.db, r.owner_id, r.opt_out_token);
   const settings = getSettings(req.db);
   const saved = r.body_override;
-  if (saved == null || saved === '') return renderPreview(req, res, r, settings);
+  if (req.query.orijinal === '1' || saved == null || saved === '') return renderPreview(req, res, r, settings);
   const optOpts = { clinicId: req.user.clinicId, optOutToken: r.opt_out_token };
   const original = previewParts(settings, buildReminderVars(settings, r), optOpts).originalBody;
   if (sameBody(saved, original)) return renderPreview(req, res, r, settings);
