@@ -165,12 +165,29 @@ export const TENANT_MIGRATIONS = [
     anonymized_at TEXT
   );
   INSERT INTO sms_log_v5 (id, owner_id, pet_id, reminder_id, phone, message, provider, status, provider_ref, error, sent_by, created_at, owner_name, pet_name, kind, legal_basis, iys_flag, identity_used, anonymized_at) SELECT id, owner_id, pet_id, reminder_id, phone, message, provider, status, provider_ref, error, sent_by, created_at, owner_name, pet_name, kind, legal_basis, iys_flag, identity_used, anonymized_at FROM sms_log;
+  -- AUTOINCREMENT sırası: eski tablonun sqlite_sequence değeri (silinmiş en yüksek id dahil) yeni tabloya taşınır;
+  -- DROP eski satırı siler, RENAME yeni satırın adını 'sms_log' yapar. (Bu adım sonradan eklendi; 5'i önceden
+  -- uygulamış DB'lerde çalışmaz, onlar için bkz. migrasyon 6.)
+  DELETE FROM sqlite_sequence WHERE name = 'sms_log_v5';
+  INSERT INTO sqlite_sequence (name, seq) SELECT 'sms_log_v5', MAX(
+    COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'sms_log'), 0),
+    COALESCE((SELECT MAX(id) FROM sms_log_v5), 0));
   DROP TABLE sms_log;
   ALTER TABLE sms_log_v5 RENAME TO sms_log;
   CREATE INDEX IF NOT EXISTS idx_sms_created ON sms_log(created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_sms_kind_created ON sms_log(kind, created_at);
   CREATE INDEX IF NOT EXISTS idx_sms_owner ON sms_log(owner_id);
   ALTER TABLE reminders ADD COLUMN simulated_at TEXT;
+  `,
+  // 6: sms_log AUTOINCREMENT güvencesi. Eski migrasyon 5 (sequence adımı olmadan) tabloyu yeniden kurduğunda
+  //    silinmiş yüksek id'lerin sırası kaybolmuş olabilir; o değer artık bilinemez. Burada yalnız seq >= MAX(id)
+  //    garanti edilir (satır yoksa eklenir, düşükse yükseltilir, yüksekse dokunulmaz). Tekrar çalıştırmak bir şey değiştirmez.
+  `
+  UPDATE sqlite_sequence SET seq = MAX(seq, COALESCE((SELECT MAX(id) FROM sms_log), 0)) WHERE name = 'sms_log';
+  INSERT INTO sqlite_sequence (name, seq)
+    SELECT 'sms_log', MAX(id) FROM sms_log
+    WHERE NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = 'sms_log')
+    HAVING MAX(id) IS NOT NULL;
   `,
 ];
 
@@ -434,8 +451,9 @@ export const smsLog = {
   scrubOwner: (db, ownerId, at) => db.prepare(`${SCRUB_SQL} WHERE owner_id = ? AND anonymized_at IS NULL`).run(at, ownerId).changes,
   /** Saklama süresi dolan satırların kişisel alanları temizlenir (periyodik imha) */
   scrubOlderThan: (db, cutoffIso, at) => db.prepare(`${SCRUB_SQL} WHERE created_at < ? AND anonymized_at IS NULL`).run(at, cutoffIso).changes,
-  /** Belirli bir andan itibaren tüm satırlar (gönderilen+başarısız+simüle; günlük tavan hesabı) */
-  countSince: (db, sinceIso) => db.prepare('SELECT COUNT(*) AS c FROM sms_log WHERE created_at >= ?').get(sinceIso).c,
+  /** Belirli bir andan itibaren gönderilen+başarısız toplamı (günlük tavan hesabı). Simüle satırlar sayılmaz:
+   *  hiçbir şey gönderilmedi; aynı gün tekrar işleme reminders.simulated_at ile zaten engellenir. */
+  countSince: (db, sinceIso) => db.prepare("SELECT COUNT(*) AS c FROM sms_log WHERE created_at >= ? AND status != 'simulated'").get(sinceIso).c,
   countBetween: (db, fromIso, toIso) => {
     const rows = db.prepare('SELECT status, COUNT(*) AS c FROM sms_log WHERE created_at >= ? AND created_at < ? GROUP BY status').all(fromIso, toIso);
     const out = { sent: 0, failed: 0, simulated: 0 }; // simulated 'sent' sayımına katılmaz

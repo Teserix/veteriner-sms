@@ -17,9 +17,18 @@ export const TEMPLATE_VARS = Object.freeze(['sahip', 'hayvan', 'tarih', 'tur', '
 export const MAX_BODY_LENGTH = 320;
 const PREFIX = 'Bilgilendirme: ';
 
-/** Türkçe harf ve aksan farklarını düzleştirir: "İNDİRİM" -> "indirim", "Ücretsiz" -> "ucretsiz" */
+/** Görünmez karakterler: sıfır genişlikli boşluk/birleştirici, yön işaretleri, word joiner, BOM, soft hyphen */
+const INVISIBLE_RE = /[\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\u3164\uFEFF\uFFA0]/g;
+
+/**
+ * Türkçe harf ve aksan farklarını düzleştirir: "İNDİRİM" -> "indirim", "Ücretsiz" -> "ucretsiz".
+ * Önce NFKC (tam genişlikli "：", "Ｉ" vb. olağan karşılığına döner), sonra görünmez karakterler silinir
+ * ("ip\u200Btal" -> "iptal").
+ */
 export function normalizeTr(s) {
   return String(s || '')
+    .normalize('NFKC')
+    .replace(INVISIBLE_RE, '')
     .replace(/İ/g, 'i').replace(/I/g, 'i').replace(/ı/g, 'i')
     .toLowerCase()
     .replace(/ş/g, 's').replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ö/g, 'o').replace(/ç/g, 'c')
@@ -75,6 +84,8 @@ export function contentProblems(text) {
   return out;
 }
 
+export const URL_PROBLEM = 'Mesaj gövdesinde bağlantı (URL, www. adresi ya da kısa link) bulunamaz; ret bağlantısı sistemce eklenir.';
+
 /** Şablon denetimi: boş, uzun, bilinmeyen değişken ve içerik ihlalleri */
 export function templateProblems(template) {
   const t = String(template || '').trim();
@@ -83,6 +94,7 @@ export function templateProblems(template) {
   if (t.length > MAX_BODY_LENGTH) out.push(`Şablon en fazla ${MAX_BODY_LENGTH} karakter olabilir (kimlik ve iptal satırı sistemce eklenir).`);
   const unknown = [...t.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).filter((k) => !TEMPLATE_VARS.includes(k));
   if (unknown.length) out.push(`Bilinmeyen değişken: {${[...new Set(unknown)].join('}, {')}}. Kullanılabilir: {${TEMPLATE_VARS.join('}, {')}}.`);
+  if (containsUrl(t)) out.push(URL_PROBLEM); // şablon da gövdedir (zamanlayıcı onu bodyProblems'siz gönderir)
   out.push(...contentProblems(t));
   return out;
 }
@@ -180,27 +192,57 @@ export function bodyProblems(body, settings, { clinicId = '', optOutToken = '' }
   const total = PREFIX.length + b.length + (tail ? tail.length + 1 : 0);
   if (total > MAX_MESSAGE_LENGTH) out.push(`Kimlik ve iptal satırıyla birlikte mesaj ${MAX_MESSAGE_LENGTH} karakteri aşıyor (${total}); gövdeyi kısaltın.`);
   if (imitatesTail(b)) out.push('Gövde kimlik (MERSIS/VKN) veya iptal satırı içeremez; bu satırlar sistemce eklenir.');
+  // Yalnız gövde denetlenir: sistemin eklediği ret bağlantısı kuyruktadır, buraya girmez
+  if (containsUrl(b)) out.push(URL_PROBLEM);
   out.push(...contentProblems(b));
   return out;
 }
 
 /**
- * Gövdede kimlik/iptal/ret satırı taklidi (normalizeTr sonrası: İ/I/ı -> i, büyük-küçük harf ve aksan farkı yok).
+ * Benzer karakter iskeleti (YALNIZ taklit denetimi için; gönderilen metne ve içerik denetimine uygulanmaz):
+ * "iptaI" / "ipta1" / "1ptal" / "!ptal" / "|ptal" -> "iptai", "0" -> "o" ... normalizeTr çıktısına uygulanır.
+ * "l" de "i"ye indirgendiği için aşağıdaki desenler bu iskelet biçiminde yazılmıştır ("link" -> "iink").
+ */
+const LOOKALIKE = Object.freeze({ l: 'i', 1: 'i', '!': 'i', '|': 'i', '¡': 'i', 0: 'o', 3: 'e', 4: 'a', '@': 'a', 5: 's', $: 's', 7: 't' });
+export function lookalikeSkeleton(s) {
+  return normalizeTr(s).replace(/[l1!|¡0345@$7]/g, (c) => LOOKALIKE[c]);
+}
+
+/**
+ * Gövdede kimlik/iptal/ret satırı taklidi (iskelet üzerinde: NFKC, görünmez karakter, Türkçe harf, benzer karakter farkı yok).
  * Meşru bakım metni ("randevunuzu iptal etmek için kliniği arayın") yakalanmaz; yalnız satır/bağlantı biçimli taklitler.
  */
 const TAIL_IMITATION = Object.freeze([
-  /\b(mersis|vkn|tckn|iptal|ret|red)\s*[:=]/,              // "Iptal:", "RET =", "MERSIS:"
-  /\bkisa[\s._-]*(link|baglanti|url)/,                      // "kısa-link", "kisa link", "kısa bağlantı"
-  /\b(iptal|ret|red)\s*(icin|etmek icin)\s*(link|baglanti|url|tikla|kisa|sms|mesaj|yaz|gonder)/, // "İptal için kısa-link", "ret için SMS"
-  /\b(iptal|ret)\s*(linki|baglantisi)/,                       // "iptal linki", "ret bağlantısı"
-  /\bsms\s*(almamak|almak istemiyorsan|istemiyorsan)/,         // "SMS almamak için", "SMS almak istemiyorsanız"
-  /\b(listeden|abonelikten)\s*cik/,                           // "listeden çıkmak için"
+  /\b(mersis|vkn|tckn|iptai|ret|red)\s*[:=]/,              // "Iptal:", "RET =", "MERSIS:", "ipta1："
+  /\bkisa[\s._-]*(iink|bagianti|uri)/,                      // "kısa-link", "kisa link", "kısa bağlantı"
+  /\b(iptai|ret|red)\s*(icin|etmek icin)\s*(iink|bagianti|uri|tikia|kisa|sms|mesaj|yaz|gonder)/, // "İptal için kısa-link"
+  /\b(iptai|ret)\s*(iinki|bagiantisi)/,                       // "iptal linki", "ret bağlantısı"
+  /\bsms\s*(aimamak|aimak istemiyorsan|istemiyorsan)/,         // "SMS almamak için", "SMS almak istemiyorsanız"
+  /\b(iisteden|aboneiikten)\s*cik/,                           // "listeden çıkmak için"
   /\/ret\//,                                                   // sahte ret URL yolu
 ]);
 
 export function imitatesTail(body) {
-  const n = normalizeTr(body);
+  const n = lookalikeSkeleton(body);
   return TAIL_IMITATION.some((re) => re.test(n));
+}
+
+/** Yaygın kısa bağlantı alan adları (eğik çizgisiz de yakalanır) */
+export const SHORTENER_DOMAINS = Object.freeze([
+  'bit.ly', 't.co', 'tinyurl.com', 'goo.gl', 'is.gd', 'ow.ly', 'cutt.ly', 'rebrand.ly', 't.ly', 'shorturl.at', 'rb.gy',
+  'tiny.cc', 's.id', 'buff.ly', 'lnkd.in', 'kisa.link', 'v.gd', 'bl.ink', 'short.io', 'tr.ee', 'qrco.de',
+]);
+const URL_RES = Object.freeze([
+  /\bhttps?:\/\//,                                   // http:// https://
+  /\bwww\./,                                          // www.
+  /\b[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}\//,          // alan.adi/ , klinik.com.tr/yol
+  new RegExp(`(^|[^a-z0-9.-])(${SHORTENER_DOMAINS.map((d) => d.replace(/\./g, '\\.')).join('|')})(?![a-z0-9-])`),
+]);
+
+/** Gövdede bağlantı (URL) var mı? NFKC + görünmez karakter temizliğinden sonra bakılır (tam genişlikli "ｈｔｔｐ" de yakalanır) */
+export function containsUrl(body) {
+  const n = normalizeTr(body);
+  return URL_RES.some((re) => re.test(n));
 }
 
 /**
