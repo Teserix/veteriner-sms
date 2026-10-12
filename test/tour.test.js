@@ -185,4 +185,40 @@ describe('POST /tur/goruldu', () => {
     assert.doesNotMatch(loginPage.text, /data-tour-auto="1"/);
     assert.doesNotMatch(loginPage.text, /name="csrf-token"/);
   });
+  test("tour.js servis edilir; sw.js önbellek listesinde", async () => {
+    const anon = createClient(app.base);
+    const js = await anon.get("/static/tour.js");
+    assert.equal(js.status, 200);
+    assert.match(String(js.headers.get("content-type")), /javascript/);
+    assert.ok(js.text.includes("/tur/goruldu"));
+    assert.ok(js.text.includes("role"));
+    const sw = await anon.get("/sw.js");
+    assert.equal(sw.status, 200);
+    assert.ok(sw.text.includes("/static/tour.js"));
+  });
+
+  test("klinik panelinde data-tour işaretleri, yeniden başlat bağlantısı ve tour.js var", async () => {
+    const page = await b.get("/");
+    assert.equal(page.status, 200);
+    for (const key of ["hizli-kayit", "hatirlatmalar", "sahipler", "sms", "ayarlar"]) {
+      assert.match(page.text, new RegExp(`data-tour="${key}"`), key);
+    }
+    assert.match(page.text, /<a href="#"[^>]*data-tour-start[^>]*>/);
+    assert.match(page.text, /<script src="\/static\/tour\.js\?v=[^"]*" defer><\/script>/);
+    assert.equal((page.text.match(/\/static\/tour\.js/g) || []).length, 1);
+  });
+
+  test("hukuki kimlik eksikse (legalLocked) tur görülmemiş olsa da data-tour-auto yok", async () => {
+    const email = "tour-kilitli@klinik.test";
+    await createClinicViaHttp(sa, { name: "Tur Kilitli", adminEmail: email, adminPassword: "GeciciK123", legalReady: false });
+    const locked = createClient(app.base);
+    await loginAndChangePassword(locked, email, "GeciciK123", "ParolaK123");
+    const { users } = await import("../src/db/master.js");
+    assert.equal(users.byEmail(email).tour_seen_at, null);
+    const page = await locked.get("/");
+    assert.equal(page.status, 200);
+    assert.match(page.text, /href="\/ayarlar"/);
+    assert.doesNotMatch(page.text, /data-tour-auto="1"/);
+    assert.match(page.text, /data-tour-start/);
+  });
 });
