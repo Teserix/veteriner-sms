@@ -894,8 +894,11 @@ dl.kv dd { margin: 0; overflow-wrap: anywhere; }
   .tour-panel.is-centered { animation: none; }
 }
 @keyframes tour-in { from { opacity: 0; } to { opacity: 1; } }
-@media (max-width: 640px) {
+/* Perde: sidebar (40), nav-backdrop (35), tabbar/topbar (30) üstünde; panelin (90) altında. */
+.tour-backdrop { position: fixed; inset: 0; z-index: 85; background: rgba(16, 24, 40, .2); }
+/* Eşik sekme çubuğuyla aynı (700px); panel sekme çubuğunun üstünde durur. */
+@media (max-width: 700px) {
   .tour-panel { left: 8px; right: 8px; top: auto; width: auto; bottom: calc(8px + env(safe-area-inset-bottom)); }
-  .has-tabbar .tour-panel { bottom: calc(var(--tabbar-h) + 8px + env(safe-area-inset-bottom)); }
+  .has-tabbar .tour-panel { bottom: calc(var(--tabbar-h) + 12px + env(safe-area-inset-bottom)); }
 }
-@media print { .tour-panel { display: none; } }
+@media print { .tour-panel, .tour-backdrop { display: none; } }

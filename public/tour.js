@@ -15,6 +15,9 @@
   var GAP = 12;
 
   var panel = null;
+  var backdrop = null;
+  var steps = STEPS;
+  var inerted = [];
   var current = 0;
   var target = null;
   var lastFocus = null;
@@ -49,11 +52,24 @@
     return window.getComputedStyle(el).visibility !== 'hidden';
   }
 
-  function findTarget(step) {
-    var list = document.querySelectorAll('[data-tour="' + step.key + '"]');
+  function firstVisible(selector) {
+    var list = document.querySelectorAll(selector);
     for (var i = 0; i < list.length; i++) if (visible(list[i])) return list[i];
-    var tab = document.querySelector('.tabbar a[href="' + step.href + '"]');
-    return visible(tab) ? tab : null;
+    return null;
+  }
+
+  // Önce adımın kendi işareti; yoksa (mobil/tablet) görünür menü düğmesi yedek hedef olur.
+  function findTarget(step) {
+    var own = firstVisible('[data-tour="' + step.key + '"]');
+    if (own) return { el: own, fallback: false };
+    var menu = firstVisible('.nav-toggle');
+    return menu ? { el: menu, fallback: true } : { el: null, fallback: false };
+  }
+
+  // Personel Ayarlar'a erişemez; o adım listeden çıkarılır.
+  function activeSteps() {
+    var staff = document.body && document.body.dataset.role === 'staff';
+    return STEPS.filter(function (s) { return !(staff && s.key === 'ayarlar'); });
   }
 
   function el(tag, cls, text) {
@@ -88,20 +104,47 @@
     els.skip.addEventListener('click', function () { close(); });
     els.prev.addEventListener('click', function () { go(current - 1); });
     els.next.addEventListener('click', function () {
-      if (current >= STEPS.length - 1) close();
+      if (current >= steps.length - 1) close();
       else go(current + 1);
     });
-    panel.addEventListener('keydown', onKey);
+    backdrop = el('div', 'tour-backdrop');
+    backdrop.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(backdrop);
     document.body.appendChild(panel);
+  }
+
+  // Panel ve perde dışındaki body çocukları inert; önceden inert olanlara dokunulmaz.
+  function inertBackground() {
+    inerted = [];
+    Array.prototype.forEach.call(document.body.children, function (c) {
+      if (c === panel || c === backdrop || c.inert) return;
+      c.inert = true;
+      inerted.push(c);
+    });
+  }
+
+  function restoreBackground() {
+    inerted.forEach(function (c) { c.inert = false; });
+    inerted = [];
+  }
+
+  function onFocusIn(e) {
+    if (!panel || panel.contains(e.target)) return;
+    var f = focusables();
+    var to = els.next && !els.next.disabled ? els.next : f[0];
+    if (to) to.focus();
   }
 
   function focusables() {
     return Array.prototype.filter.call(panel.querySelectorAll('button'), function (b) { return !b.disabled; });
   }
 
+  // Belge düzeyinde capture: Esc app.js'teki çekmece/menü dinleyicilerine ulaşmaz.
   function onKey(e) {
     if (e.key === 'Escape') {
       e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
       close();
       return;
     }
@@ -126,7 +169,7 @@
   }
 
   function sheet() {
-    return window.matchMedia('(max-width: 640px)').matches;
+    return window.matchMedia('(max-width: 700px)').matches; // sekme çubuğu eşiğiyle aynı
   }
 
   function place() {
@@ -153,41 +196,61 @@
   }
 
   function go(i) {
-    if (i < 0 || i >= STEPS.length) return;
+    if (i < 0 || i >= steps.length) return;
     current = i;
-    var step = STEPS[i];
+    var step = steps[i];
     clearTarget();
-    target = findTarget(step);
+    var found = findTarget(step);
+    target = found.el;
     if (target) {
       target.classList.add('tour-target');
-      var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      try { target.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' }); } catch (e) { target.scrollIntoView(); }
+      try { target.scrollIntoView({ block: 'nearest', behavior: 'auto' }); } catch (e) { target.scrollIntoView(); }
     }
-    els.count.textContent = 'Adım ' + (i + 1) + '/' + STEPS.length;
+    els.count.textContent = 'Adım ' + (i + 1) + '/' + steps.length;
     els.title.textContent = step.title;
-    els.text.textContent = step.text;
+    els.text.textContent = step.text + (found.fallback ? ' Menü düğmesinden ulaşabilirsiniz.' : '');
     els.prev.disabled = i === 0;
-    els.next.textContent = i === STEPS.length - 1 ? 'Bitir' : 'İleri';
+    els.next.textContent = i === steps.length - 1 ? 'Bitir' : 'İleri';
     place();
     els.next.focus();
   }
 
+  var SCROLL_OPTS = { passive: true, capture: true };
+
   function open() {
     if (panel) return;
     lastFocus = document.activeElement;
+    steps = activeSteps();
     build();
-    go(0);
+    inertBackground();
+    document.addEventListener('keydown', onKey, true);
+    document.addEventListener('focusin', onFocusIn, true);
     window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, SCROLL_OPTS);
+    go(0);
   }
 
   function close() {
     if (!panel) return;
+    document.removeEventListener('keydown', onKey, true);
+    document.removeEventListener('focusin', onFocusIn, true);
     window.removeEventListener('resize', place);
+    window.removeEventListener('scroll', place, SCROLL_OPTS);
+    restoreBackground();
     clearTarget();
     panel.remove();
     panel = null;
+    if (backdrop) backdrop.remove();
+    backdrop = null;
     report();
-    if (lastFocus && typeof lastFocus.focus === 'function' && document.contains(lastFocus)) lastFocus.focus();
+    // Odak açılıştaki öğeye; belgeden kalkmışsa ana içeriğe (yoksa body'ye) döner.
+    var back = lastFocus && typeof lastFocus.focus === 'function' && document.contains(lastFocus) && lastFocus !== document.body
+      ? lastFocus : null;
+    if (!back) {
+      back = document.querySelector('main#main') || document.body;
+      if (!back.hasAttribute('tabindex')) back.setAttribute('tabindex', '-1');
+    }
+    back.focus();
     lastFocus = null;
   }
 
