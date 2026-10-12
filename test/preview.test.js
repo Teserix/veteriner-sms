@@ -11,6 +11,8 @@ const { DEFAULT_SETTINGS, openTenant, setSetting, getSettings, owners, pets, rem
 const { clinics } = await import('../src/db/master.js');
 const { dispatch } = await import('../src/sms/dispatch.js');
 const { randomId } = await import('../src/crypto.js');
+const { PROVIDERS } = await import('../src/sms/index.js');
+PROVIDERS.previewok = { label: 'previewok', fields: [], senderHelp: '', async send() { return { ok: true, ref: 'p' }; } };
 const { nowIso, todayLocal } = await import('../src/util.js');
 
 const CID = 'abcdefabcdef';
@@ -176,7 +178,7 @@ describe('dispatch son kilidi ve düzenlenmiş gövdeyle gönderim', () => {
     assert.equal(first.skipped, undefined);
     assert.equal(reminders.get(db, rid).body_override, 'Boncuk için aşı günü.');
     db.prepare('UPDATE reminders SET last_attempt_at = NULL WHERE id = ?').run(rid);
-    const retry = await sendReminderSms(id, db, getSettings(db), reminders.get(db, rid), 'zamanlayici');
+    const retry = await sendReminderSms(id, db, { ...getSettings(db), sms_provider: 'previewok' }, reminders.get(db, rid), 'zamanlayici');
     assert.equal(retry.ok, true);
     assert.equal(retry.edited, true);
     assert.match(retry.message, /^Bilgilendirme: Boncuk için aşı günü\. /);

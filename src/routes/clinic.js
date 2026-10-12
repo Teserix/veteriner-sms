@@ -204,6 +204,7 @@ clinicRouter.post('/ayarlar/test', requireRole('admin'), limiters.testSms.middle
   // Gerçek gönderimle aynı kuyruk (kimlik + iptal satırı) eklenir ki yönetici alıcının göreceği metni görsün
   const message = composeMessage(settings, `Test mesajı - ${settings.clinic_name || 'Veteriner SMS'}`, { clinicId: req.user.clinicId, optOutToken: '' });
   const r = await dispatch({ clinicId: req.user.clinicId, db: req.db, settings, kind: 'test', to: phone, message, sentBy: req.user.email });
+  if (r.ok && r.simulated) return res.redirect(withFlash('/ayarlar', 'err', 'Test SMS simüle edildi, gönderilmedi (SMS_MODE live değil).'));
   if (r.ok) return res.redirect(withFlash('/ayarlar', 'ok', `Test SMS gönderildi (${r.providerName}).`));
   res.redirect(withFlash('/ayarlar', 'err', 'Gönderilemedi: ' + r.error));
 });

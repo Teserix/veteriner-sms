@@ -358,3 +358,23 @@ test('elle gönderim sınırı: 31. istek 429', async () => {
   assert.equal(r.status, 429);
   limiters.manualSms._hits.clear();
 });
+
+test('GET onizle yan etkisiz: ret belirteci yoksa yazılmaz (geçici değer); belirteç gerçek gönderimde oluşur', async () => {
+  const { rem, csrf } = await quick(a, { phone: '05321110099' });
+  dbA.prepare('UPDATE owners SET opt_out_token = NULL WHERE id = ?').run(rem.owner_id !== undefined ? rem.owner_id : reminders.get(dbA, rem.id).owner_id);
+  const ownerId = reminders.get(dbA, rem.id).owner_id;
+  const page = await a.get(`/hatirlatmalar/${rem.id}/onizle`);
+  assert.equal(page.status, 200);
+  assert.match(fullOf(page.text), /Iptal: http:\/\/127\.0\.0\.1:\d+\/ret\/[a-f0-9]{12}\.[a-f0-9]{32} /);
+  assert.equal(owners.get(dbA, ownerId).opt_out_token, null, 'GET belirteç yazmamalı');
+  const again = await a.get(`/hatirlatmalar/${rem.id}/onizle`);
+  assert.equal(again.status, 200);
+  assert.equal(owners.get(dbA, ownerId).opt_out_token, null);
+  const n = sent.length;
+  const r = await a.post(`/hatirlatmalar/${rem.id}/gonder`, { _csrf: csrf });
+  assert.equal(r.status, 302);
+  const token = owners.get(dbA, ownerId).opt_out_token;
+  assert.match(token, /^[a-f0-9]{32}$/);
+  assert.equal(sent.length, n + 1);
+  assert.ok(sent.at(-1).message.includes(`/ret/${clinicA}.${token} `));
+});

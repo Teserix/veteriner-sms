@@ -2,6 +2,7 @@ import { config } from './config.js';
 import { clinics } from './db/master.js';
 import { openTenant, getSettings, reminders, owners } from './db/tenant.js';
 import { dispatchUnlocked, lockKey } from './sms/dispatch.js';
+import { smsMode } from './sms/index.js';
 import { composeFromTemplate, bodyProblems, previewParts, sameBody, oneLineBody } from './sms/policy.js';
 import { randomId } from './crypto.js';
 import { withLock } from './lock.js';
@@ -116,7 +117,11 @@ export function sendReminderSms(clinicId, db, settings, r, sentBy = 'zamanlayici
       reminderId: fresh.id, sentBy,
     });
 
-    if (result.ok) {
+    if (result.ok && result.simulated) {
+      // SMS_MODE live değil: hiçbir şey gönderilmedi. Hatırlatma açık (pending) kalır, markSent/createNextOccurrence yok;
+      // deneme izi geri alınır, simulated_at yazılır (processClinic aynı gün yeniden işlemez)
+      reminders.markSimulated(db, fresh.id, now.toISOString(), prevAttempt); // 'now' ile: processClinic aynı yerel günü buna göre karşılaştırır
+    } else if (result.ok) {
       reminders.markSent(db, fresh.id, at);
       createNextOccurrence(db, fresh, at, today);
     } else if (result.skipped) {
@@ -144,15 +149,17 @@ export async function processClinic(clinicId, now = new Date()) {
   if (hour < start || hour >= end) return { skipped: 'saat-disi', sent: 0, failed: 0 };
 
   const due = reminders.due(db, today);
-  let sent = 0, failed = 0, skipped = 0;
+  let sent = 0, failed = 0, skipped = 0, simulated = 0;
   const nowMs = now.getTime();
 
   for (const r of due) {
     if (!r.sms_opt_in) { skipped++; continue; }
+    if (r.simulated_at && nowLocal(new Date(r.simulated_at)).date === today) { skipped++; continue; } // bugün zaten simüle edildi
     if (r.last_attempt_at && nowMs - new Date(r.last_attempt_at).getTime() < RETRY_AFTER_MS) { skipped++; continue; }
     try {
       const res = await sendReminderSms(clinicId, db, settings, r, 'zamanlayici', now);
-      if (res.ok) sent++;
+      if (res.ok && res.simulated) simulated++;
+      else if (res.ok) sent++;
       else if (res.skipped === 'cap') { skipped += due.length - sent - failed - skipped; break; }
       else if (res.skipped) skipped++;
       else failed++;
@@ -161,7 +168,7 @@ export async function processClinic(clinicId, now = new Date()) {
       log.error('hatırlatma gönderilemedi', { clinicId, reminderId: r.id, error: e.message });
     }
   }
-  return { sent, failed, skipped };
+  return simulated ? { sent, failed, skipped, simulated } : { sent, failed, skipped };
 }
 
 let running = null; // çalışan tick'in promise'i
@@ -174,7 +181,7 @@ export async function tick(now = new Date()) {
       for (const c of clinics.active()) {
         try {
           const r = await processClinic(c.id, now);
-          if (r.sent || r.failed) log.info('zamanlayıcı', { clinic: c.id, sent: r.sent, failed: r.failed, skipped: r.skipped });
+          if (r.sent || r.failed || r.simulated) log.info('zamanlayıcı', { clinic: c.id, sent: r.sent, failed: r.failed, skipped: r.skipped, simulated: r.simulated || 0 });
         } catch (e) {
           log.error('klinik işlenemedi', { clinic: c.id, error: e.message });
         }
@@ -188,16 +195,23 @@ export async function tick(now = new Date()) {
   return running;
 }
 
+/** Döner: zamanlayıcı başlatıldıysa true. Güvenli taraf: yalnız ENABLE_SCHEDULER açık VE SMS_MODE tam olarak 'live' iken başlar. */
 export function startScheduler() {
   if (!config.enableScheduler) {
     log.warn('Zamanlayıcı kapalı (ENABLE_SCHEDULER=1 verilmedi); otomatik SMS gönderilmeyecek.');
-    return;
+    return false;
+  }
+  if (smsMode() !== 'live') {
+    // NODE_ENV'e bakılmaz: tanımsız/tanınmayan SMS_MODE'da hatırlatmalar sessizce 'simüle' edilip birikmesin
+    log.warn("Zamanlayıcı BAŞLATILMADI: SMS_MODE='live' değil (tanımsız ya da tanınmayan değer); otomatik SMS gönderimi kapalı.");
+    return false;
   }
   const ms = config.schedulerIntervalSeconds * 1000;
   log.info(`zamanlayıcı her ${config.schedulerIntervalSeconds} sn'de bir çalışacak`);
   setTimeout(() => tick(), 5000).unref();
   timer = setInterval(() => tick(), ms);
   timer.unref();
+  return true;
 }
 
 /** Çalışan tick'i bekleyip zamanlayıcıyı durdurur (graceful shutdown) */

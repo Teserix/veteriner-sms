@@ -201,15 +201,16 @@ test('ek) PWA kurulum satırı: nötr metin düğmesi ve erişilebilir kapat', (
 });
 
 test('7) elle gönderim; SMS geçmişi; ikinci gönderim engellenir', async () => {
+  // SMS_MODE live değil (test ortamı): gönderim simüle edilir, kullanıcıya açıkça söylenir, hatırlatma açık kalır
   let r = await c.post('/hatirlatmalar/1/gonder', { _csrf: csrf }, { referer: app.base + '/sahipler/1?ok=x' });
   assert.equal(r.status, 302);
-  assert.ok(r.location.startsWith('/sahipler/1?ok='), r.location);
+  assert.ok(r.location.startsWith('/sahipler/1?err='), r.location);
+  assert.ok(decodeURIComponent(r.location.replace(/\+/g, ' ')).includes('simüle edildi, gönderilmedi'), r.location);
   assert.ok(!r.location.includes('ok=x'));
   r = await c.get('/sms');
   assert.equal(r.status, 200);
-  assert.ok(r.text.includes('Gönderildi') && r.text.includes('Mehmet Kaya'));
-  r = await c.post('/hatirlatmalar/1/gonder', { _csrf: csrf });
-  assert.ok(r.location.includes('err='), r.location);
+  assert.ok(r.text.includes('Simüle edildi (gönderilmedi)') && r.text.includes('Mehmet Kaya'));
+  assert.ok(!r.text.includes('>Gönderildi<'));
 });
 
 test('8) açık yönlendirme koruması', async () => {
@@ -238,7 +239,7 @@ test('9) ayarlar: kaydet, kimlik bilgisi, test SMS ve günlük tavan', async () 
   r = await c.post('/ayarlar', { _csrf: csrf, clinic_name: 'Pati', clinic_phone: '0212', template: 'x', scheduler_enabled: '1', send_hour_start: '9', send_hour_end: '20', daily_sms_limit: '2', sms_provider: 'console', sms_sender: '', legal_form: 'tacir', mersis_no: '0123456789012345' });
   assert.equal(r.status, 302);
   r = await c.post('/ayarlar/test', { _csrf: csrf, phone: '05001112233' });
-  assert.ok(r.location.includes('ok='), r.location);
+  assert.ok(r.location.includes('err=') && decodeURIComponent(r.location.replace(/\+/g, ' ')).includes('simüle edildi, gönderilmedi'), r.location);
   r = await c.post('/ayarlar/test', { _csrf: csrf, phone: '05001112233' });
   assert.ok(r.location.includes('err='), r.location);
   assert.ok(decodeURIComponent(r.location).includes('sınır'), decodeURIComponent(r.location));

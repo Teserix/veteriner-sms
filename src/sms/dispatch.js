@@ -16,7 +16,7 @@ import { todayLocal, localDayStartIso, toInt, nowIso } from '../util.js';
  *
  * dispatch({ clinicId, db, settings, kind: 'reminder'|'test'|'manual', to, message, optOutToken?,
  *            owner?: {id,name,sms_opt_in}, pet?: {id,name}, reminderId?, sentBy })
- * => { ok, ref?, error?, skipped?: 'opt-out'|'cap'|'legal'|'tail', providerName?, logId? }
+ * => { ok, simulated?: true (SMS_MODE live değil; gönderilmedi, sms_log 'simulated'), ref?, error?, skipped?: 'opt-out'|'cap'|'legal'|'tail', providerName?, logId? }
  *
  * Son kilit (test hariç): metin 'Bilgilendirme: ' önekiyle başlamalı ve gerçek kimlik + iptal kuyruğuyla
  * (optOutToken ile üretilen) bitmeli (policy.js hasMandatoryTail); değilse sağlayıcıya gitmez, sms_log'a yazılmaz.
@@ -81,7 +81,7 @@ export async function dispatchUnlocked({ clinicId, db, settings, kind = 'reminde
     phone: to,
     message: String(message || '').slice(0, 460),
     provider: result.providerName,
-    status: result.ok ? 'sent' : 'failed',
+    status: result.simulated ? 'simulated' : result.ok ? 'sent' : 'failed',
     provider_ref: result.ref ?? null,
     error: result.error ?? null,
     sent_by: sentBy,
@@ -93,7 +93,7 @@ export async function dispatchUnlocked({ clinicId, db, settings, kind = 'reminde
     iys_flag: IYS_FLAG_INFO,
     identity_used: identityLine(settings) || null,
   });
-  log.info('sms', { clinicId, kind, to: log.maskPhone(to), ok: result.ok, provider: result.providerName });
+  log.info('sms', { clinicId, kind, to: log.maskPhone(to), ok: result.ok, simulated: !!result.simulated, provider: result.providerName });
   return { ...result, logId };
 }
 

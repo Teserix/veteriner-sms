@@ -20,7 +20,8 @@ export function smsMode() {
 /** Konsol satırı: numaranın yalnızca son 2 hanesi, mesaj metni ASLA yazılmaz (yalnızca uzunluk). */
 function consoleSend({ to, message, sender }) {
   console.log(`[SMS-KONSOL] -> ${maskPhoneTail(to)} (${sender || 'başlıksız'}) ${String(message || '').length} karakter`);
-  return { ok: true, ref: 'konsol-' + Date.now() };
+  // simulated: hiçbir sağlayıcıya gitmedi; çağıranlar bunu 'gönderildi' saymaz (sms_log 'simulated', hatırlatma açık kalır)
+  return { ok: true, simulated: true, ref: 'konsol-' + Date.now() };
 }
 
 const TIMEOUT_MS = 15000;
@@ -223,7 +224,7 @@ export async function sendSms(settings, to, message) {
 
 /**
  * TEK GÖNDERİM KAPISI. Sağlayıcıya (ağa) giden her çağrı buradan geçer.
- * SMS_MODE !== 'live' ise sağlayıcı çağrılmaz; konsol satırı yazılır ve başarı döner (providerName 'console').
+ * SMS_MODE !== 'live' ise sağlayıcı çağrılmaz; konsol satırı yazılır ve { ok:true, simulated:true } döner (providerName 'console').
  */
 export async function deliver({ name, provider, to, message, sender, credentials }) {
   if (smsMode() !== 'live' || name === 'console') {

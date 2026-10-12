@@ -87,7 +87,7 @@
         <tr>
           <td class="small tnum" data-label="Zaman"><%= formatDateTime(s.created_at) %></td>
           <td class="small pre" data-label="Mesaj"><%= s.message %></td>
-          <td data-label="Durum"><span class="badge <%= s.status === 'sent' ? 'ok' : 'failed' %>"><%= s.status === 'sent' ? 'Gönderildi' : 'Hata' %></span><% if (s.error) { %><span class="cell-sub"><%= s.error %></span><% } %></td>
+          <td data-label="Durum"><span class="badge <%= s.status === 'sent' ? 'ok' : s.status === 'simulated' ? 'muted' : 'failed' %>"><%= s.status === 'sent' ? 'Gönderildi' : s.status === 'simulated' ? 'Simüle edildi (gönderilmedi)' : 'Hata' %></span><% if (s.error) { %><span class="cell-sub"><%= s.error %></span><% } %></td>
         </tr>
         <% } %>
         </tbody>

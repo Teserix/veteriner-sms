@@ -94,8 +94,10 @@ test('sahip oluşturma tercih olayı yazar; SMS gönderimi ret bağlantısı iç
   assert.equal(r.status, 302);
   const reminderId = db.prepare('SELECT id FROM reminders ORDER BY id DESC LIMIT 1').get().id;
   r = await c.post(`/hatirlatmalar/${reminderId}/gonder`, { _csrf: csrf });
-  assert.ok(r.location.includes('ok='), r.location);
+  // test ortamında SMS_MODE live değil: simüle edilir (metin yine aynı kuyrukla üretilip sms_log'a 'simulated' yazılır)
+  assert.ok(r.location.includes('err=') && decodeURIComponent(r.location.replace(/\+/g, ' ')).includes('simüle'), r.location);
   const log = smsLog.allByOwner(db, ownerId)[0];
+  assert.equal(log.status, 'simulated');
   assert.ok(log.message.startsWith('Bilgilendirme: '), log.message);
   assert.ok(log.message.includes('MERSIS:0123456789012345'));
   assert.ok(log.message.includes(`/ret/${clinicId}.${optOutToken}`));

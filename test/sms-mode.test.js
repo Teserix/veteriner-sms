@@ -119,8 +119,10 @@ describe('SMS_MODE gönderim kapısı', () => {
     process.env.SMS_MODE = 'console';
     const c = mk();
     const res = await processClinic(c.id, NOW);
-    assert.equal(res.sent, 1);
-    assert.equal(reminders.get(c.db, c.rid).status, 'sent');
+    // SMS_MODE live değil: simüle edilir, gönderilmiş sayılmaz, hatırlatma açık kalır
+    assert.equal(res.sent, 0);
+    assert.equal(res.simulated, 1);
+    assert.equal(reminders.get(c.db, c.rid).status, 'pending');
     assert.equal(fakeCalls.length, 0);
     process.env.SMS_MODE = 'live';
     const l = mk();

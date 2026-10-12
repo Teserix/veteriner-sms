@@ -7,6 +7,12 @@ const { clinics, auditLog } = await import('../src/db/master.js');
 const { openTenant, closeAll, setSetting, getSettings, owners, pets, reminders, smsLog } = await import('../src/db/tenant.js');
 const { processClinic, sendReminderSms } = await import('../src/scheduler.js');
 const { randomId } = await import('../src/crypto.js');
+const { PROVIDERS } = await import('../src/sms/index.js');
+
+// Gerçek gönderim yolu sahte sağlayıcıyla sınanır (ağ çağrısı yok). SMS_MODE live değilken simüle davranışı
+// test/sms-simulated.test.js içindedir.
+process.env.SMS_MODE = 'live';
+PROVIDERS.testok = { label: 'testok', fields: [], senderHelp: '', async send() { return { ok: true, ref: 'testok' }; } };
 const { addDays, nowIso, nowLocal } = await import('../src/util.js');
 
 // Sabit "şimdi": 2026-09-03 09:00Z = İstanbul 12:00 (pencere 9-20 içinde)
@@ -25,6 +31,7 @@ function newClinic(settings = {}) {
   setSetting(db, 'clinic_phone', '0212 555');
   for (const [k, v] of Object.entries(LEGAL_SETTINGS)) setSetting(db, k, v);
   setSetting(db, 'clinic_phone', '0212 555');
+  setSetting(db, 'sms_provider', 'testok');
   for (const [k, v] of Object.entries(settings)) setSetting(db, k, v);
   return { id, db };
 }
@@ -54,7 +61,7 @@ describe('processClinic', () => {
     assert.equal(rows.length, 1);
     assert.equal(rows[0].kind, 'reminder');
     assert.equal(rows[0].status, 'sent');
-    assert.equal(rows[0].provider, 'console');
+    assert.equal(rows[0].provider, 'testok');
     assert.equal(rows[0].reminder_id, reminderId);
     assert.equal(rows[0].owner_id, ownerId);
     assert.equal(rows[0].pet_id, petId);

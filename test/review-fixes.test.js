@@ -198,6 +198,7 @@ test('HTTP düzeltmeleri', async (t) => {
     assert.equal(r.status, 302);
     const db = openTenant(clinicId);
     const rem = db.prepare('SELECT * FROM reminders ORDER BY id DESC LIMIT 1').get();
+    setSetting(db, 'sms_provider', 'slow'); // gerçek gönderim yolu (sahte sağlayıcı); konsol simüle eder, kapatmaz
     r = await admin.post(`/hatirlatmalar/${rem.id}/gonder`, { _csrf: csrf });
     assert.ok(String(r.location).includes('ok='), r.location);
     assert.equal(reminders.get(db, rem.id).status, 'sent');

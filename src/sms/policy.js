@@ -179,9 +179,28 @@ export function bodyProblems(body, settings, { clinicId = '', optOutToken = '' }
   const { tail } = tailOf(settings || {}, clinicId, optOutToken);
   const total = PREFIX.length + b.length + (tail ? tail.length + 1 : 0);
   if (total > MAX_MESSAGE_LENGTH) out.push(`Kimlik ve iptal satırıyla birlikte mesaj ${MAX_MESSAGE_LENGTH} karakteri aşıyor (${total}); gövdeyi kısaltın.`);
-  if (/\b(mersis|vkn|iptal)\s*:/.test(normalizeTr(b))) out.push('Gövde kimlik (MERSIS/VKN) veya iptal satırı içeremez; bu satırlar sistemce eklenir.');
+  if (imitatesTail(b)) out.push('Gövde kimlik (MERSIS/VKN) veya iptal satırı içeremez; bu satırlar sistemce eklenir.');
   out.push(...contentProblems(b));
   return out;
+}
+
+/**
+ * Gövdede kimlik/iptal/ret satırı taklidi (normalizeTr sonrası: İ/I/ı -> i, büyük-küçük harf ve aksan farkı yok).
+ * Meşru bakım metni ("randevunuzu iptal etmek için kliniği arayın") yakalanmaz; yalnız satır/bağlantı biçimli taklitler.
+ */
+const TAIL_IMITATION = Object.freeze([
+  /\b(mersis|vkn|tckn|iptal|ret|red)\s*[:=]/,              // "Iptal:", "RET =", "MERSIS:"
+  /\bkisa[\s._-]*(link|baglanti|url)/,                      // "kısa-link", "kisa link", "kısa bağlantı"
+  /\b(iptal|ret|red)\s*(icin|etmek icin)\s*(link|baglanti|url|tikla|kisa|sms|mesaj|yaz|gonder)/, // "İptal için kısa-link", "ret için SMS"
+  /\b(iptal|ret)\s*(linki|baglantisi)/,                       // "iptal linki", "ret bağlantısı"
+  /\bsms\s*(almamak|almak istemiyorsan|istemiyorsan)/,         // "SMS almamak için", "SMS almak istemiyorsanız"
+  /\b(listeden|abonelikten)\s*cik/,                           // "listeden çıkmak için"
+  /\/ret\//,                                                   // sahte ret URL yolu
+]);
+
+export function imitatesTail(body) {
+  const n = normalizeTr(body);
+  return TAIL_IMITATION.some((re) => re.test(n));
 }
 
 /**

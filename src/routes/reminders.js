@@ -6,6 +6,7 @@ import { contentProblems, previewParts, bodyProblems, smsSegments, usesTurkishSh
 import { limiters } from '../ratelimit.js';
 import { MAX_MESSAGE_LENGTH } from '../sms/index.js';
 import { audit } from '../audit.js';
+import { randomId } from '../crypto.js';
 import { trim, toInt, nowIso, isValidDate, todayLocal, addDays, returnTo, withFlash, isDemoPhone, REMINDER_TYPES } from '../util.js';
 
 export const remindersRouter = Router();
@@ -143,8 +144,9 @@ function renderPreview(req, res, r, settings, { body, problems = [], status = 20
 }
 
 /**
- * Gönderim öncesi tam önizleme. Ret belirteci yoksa burada üretilir (ensureOptOutToken): GET'te yan etkidir ama
- * kabul edildi; böylece önizlenen iptal bağlantısı gönderilecek olanla birebir aynıdır (yer tutucu URL gösterilmez).
+ * Gönderim öncesi tam önizleme. GET yan etkisizdir: ret belirteci yoksa veritabanına YAZILMAZ; önizlemede aynı uzunlukta,
+ * kalıcı olmayan geçici bir belirteç kullanılır (uzunluk/parça hesabı doğru kalır). Gerçek belirteç gönderimde
+ * (POST /gonder, sendReminderSms -> ensureOptOutToken) üretilir.
  * Kayıtlı düzenlenmiş gövde (body_override, örn. başarısız gönderimden kalan) varsa o açılır; form onu POST ettiği için
  * gönderimde sessizce kaybolmaz. Sonradan geçersizleşmişse sorunlar listelenir (zamanlayıcı da onu göndermez).
  * ?orijinal=1 ("Orijinale dön", JS kapalıyken de çalışır): kayıtlı gövde yok sayılıp şablon gövdesi açılır.
@@ -154,7 +156,7 @@ function renderPreview(req, res, r, settings, { body, problems = [], status = 20
 remindersRouter.get('/hatirlatmalar/:id/onizle', (req, res) => {
   const r = reminders.get(req.db, toInt(req.params.id));
   if (!r) return notFound(res);
-  r.opt_out_token = ensureOptOutToken(req.db, r.owner_id, r.opt_out_token);
+  if (!r.opt_out_token) r.opt_out_token = randomId(16); // yalnız bu yanıt için; kaydedilmez
   const settings = getSettings(req.db);
   const saved = r.body_override;
   if (req.query.orijinal === '1' || saved == null || saved === '') return renderPreview(req, res, r, settings);
@@ -207,6 +209,9 @@ remindersRouter.post('/hatirlatmalar/:id/gonder', limiters.manualSms.middleware(
         segments: seg.segments, encoding: seg.encoding, ok: !!result.ok,
       },
     });
+  }
+  if (result.ok && result.simulated) {
+    return res.redirect(withFlash(back, 'err', 'SMS simüle edildi, gönderilmedi (SMS_MODE live değil); hatırlatma açık kaldı: ' + r.owner_name));
   }
   if (result.ok) return res.redirect(withFlash(back, 'ok', 'SMS gönderildi: ' + r.owner_name));
   res.redirect(withFlash(back, 'err', 'Gönderilemedi: ' + result.error));

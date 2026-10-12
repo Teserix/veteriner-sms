@@ -138,6 +138,40 @@ export const TENANT_MIGRATIONS = [
   `
   ALTER TABLE reminders ADD COLUMN body_override TEXT;
   `,
+  // 5: sms_log.status 'simulated' (SMS_MODE live değilken konsola yazılan, gönderilmeyen ileti) + reminders.simulated_at.
+  //    SQLite CHECK kısıtı ALTER ile değişmez: tablo yeniden kurulur, veri kopyalanır, dizinler yeniden oluşturulur.
+  //    Migrasyon çalıştırıcısı bunu tek transaction içinde ve user_version ile bir kez uygular (yarıda kalırsa ROLLBACK).
+  //    sms_log'a yabancı anahtarla bağlanan tablo yoktur; foreign_keys açıkken DROP güvenlidir.
+  `
+  CREATE TABLE sms_log_v5 (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_id      INTEGER,
+    pet_id        INTEGER,
+    reminder_id   INTEGER,
+    phone         TEXT NOT NULL,
+    message       TEXT NOT NULL,
+    provider      TEXT NOT NULL,
+    status        TEXT NOT NULL CHECK (status IN ('sent','failed','simulated')),
+    provider_ref  TEXT,
+    error         TEXT,
+    sent_by       TEXT,
+    created_at    TEXT NOT NULL,
+    owner_name    TEXT,
+    pet_name      TEXT,
+    kind          TEXT NOT NULL DEFAULT 'reminder',
+    legal_basis   TEXT,
+    iys_flag      TEXT,
+    identity_used TEXT,
+    anonymized_at TEXT
+  );
+  INSERT INTO sms_log_v5 (id, owner_id, pet_id, reminder_id, phone, message, provider, status, provider_ref, error, sent_by, created_at, owner_name, pet_name, kind, legal_basis, iys_flag, identity_used, anonymized_at) SELECT id, owner_id, pet_id, reminder_id, phone, message, provider, status, provider_ref, error, sent_by, created_at, owner_name, pet_name, kind, legal_basis, iys_flag, identity_used, anonymized_at FROM sms_log;
+  DROP TABLE sms_log;
+  ALTER TABLE sms_log_v5 RENAME TO sms_log;
+  CREATE INDEX IF NOT EXISTS idx_sms_created ON sms_log(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_sms_kind_created ON sms_log(kind, created_at);
+  CREATE INDEX IF NOT EXISTS idx_sms_owner ON sms_log(owner_id);
+  ALTER TABLE reminders ADD COLUMN simulated_at TEXT;
+  `,
 ];
 
 // Kimlik, telefon ve iptal satırı gönderimde sistemce eklenir (src/sms/policy.js); şablon yalnızca gövdedir.
@@ -357,9 +391,9 @@ export const reminders = {
   update: (db, id, r) => db.prepare(`UPDATE reminders SET type = ?, title = ?, due_date = ?, notify_days_before = ?, repeat_days = ?, notes = ? WHERE id = ?`)
     .run(r.type, r.title, r.due_date, r.notify_days_before, r.repeat_days ?? null, r.notes ?? null, id),
   setStatus: (db, id, status) => db.prepare('UPDATE reminders SET status = ? WHERE id = ?').run(status, id),
-  resetForRetry: (db, id) => db.prepare(`UPDATE reminders SET status = 'pending', attempts = 0, last_error = NULL, last_attempt_at = NULL WHERE id = ?`).run(id),
+  resetForRetry: (db, id) => db.prepare(`UPDATE reminders SET status = 'pending', attempts = 0, last_error = NULL, last_attempt_at = NULL, simulated_at = NULL WHERE id = ?`).run(id),
   /** Tarih değişince gönderilmiş/başarısız hatırlatmayı yeniden beklemeye alır */
-  reopen: (db, id) => db.prepare(`UPDATE reminders SET status = 'pending', body_override = NULL, attempts = 0, last_error = NULL, last_attempt_at = NULL, sent_at = NULL WHERE id = ?`).run(id),
+  reopen: (db, id) => db.prepare(`UPDATE reminders SET status = 'pending', body_override = NULL, attempts = 0, last_error = NULL, last_attempt_at = NULL, sent_at = NULL, simulated_at = NULL WHERE id = ?`).run(id),
   /** Gönderimden hemen önce iz bırakır: çökme/yeniden başlatmada aynı hatırlatma 4 saat içinde tekrar gönderilmez */
   claim: (db, id, at) => db.prepare(`UPDATE reminders SET last_attempt_at = ? WHERE id = ? AND status = 'pending'`).run(at, id).changes,
   setLastAttempt: (db, id, value) => db.prepare('UPDATE reminders SET last_attempt_at = ? WHERE id = ?').run(value, id),
@@ -367,11 +401,13 @@ export const reminders = {
     Boolean(db.prepare(`SELECT 1 FROM reminders WHERE pet_id = ? AND title = ? AND due_date = ? AND status = 'pending' LIMIT 1`).get(petId, title, dueDate)),
   /** Kalıcı olarak başarısız olanlar (panelde gösterilir) */
   failedList: (db) => db.prepare(`${REMINDER_SELECT} WHERE r.status = 'failed' ORDER BY r.due_date DESC LIMIT 100`).all(),
-  markSent: (db, id, at) => db.prepare(`UPDATE reminders SET status = 'sent', body_override = NULL, sent_at = ?, attempts = attempts + 1, last_attempt_at = ?, last_error = NULL WHERE id = ?`).run(at, at, id),
+  markSent: (db, id, at) => db.prepare(`UPDATE reminders SET status = 'sent', body_override = NULL, simulated_at = NULL, sent_at = ?, attempts = attempts + 1, last_attempt_at = ?, last_error = NULL WHERE id = ?`).run(at, at, id),
   markAttemptFailed: (db, id, at, error, maxAttempts) => db.prepare(`
     UPDATE reminders SET attempts = attempts + 1, last_attempt_at = ?, last_error = ?,
       status = CASE WHEN attempts + 1 >= ? THEN 'failed' ELSE status END
     WHERE id = ?`).run(at, error, maxAttempts, id),
+  /** Simüle gönderim (SMS_MODE live değil): durum/attempts değişmez, last_attempt_at geri alınır; zamanlayıcı aynı gün tekrar denemez */
+  markSimulated: (db, id, at, prevAttempt) => db.prepare('UPDATE reminders SET simulated_at = ?, last_attempt_at = ? WHERE id = ?').run(at, prevAttempt ?? null, id),
   setBodyOverride: (db, id, body) => db.prepare('UPDATE reminders SET body_override = ? WHERE id = ?').run(body ?? null, id),
   delete: (db, id) => db.prepare('DELETE FROM reminders WHERE id = ?').run(id),
   countByStatus: (db) => db.prepare('SELECT status, COUNT(*) AS c FROM reminders GROUP BY status').all(),
@@ -398,11 +434,11 @@ export const smsLog = {
   scrubOwner: (db, ownerId, at) => db.prepare(`${SCRUB_SQL} WHERE owner_id = ? AND anonymized_at IS NULL`).run(at, ownerId).changes,
   /** Saklama süresi dolan satırların kişisel alanları temizlenir (periyodik imha) */
   scrubOlderThan: (db, cutoffIso, at) => db.prepare(`${SCRUB_SQL} WHERE created_at < ? AND anonymized_at IS NULL`).run(at, cutoffIso).changes,
-  /** Belirli bir andan itibaren gönderilen+başarısız toplamı (günlük tavan hesabı) */
+  /** Belirli bir andan itibaren tüm satırlar (gönderilen+başarısız+simüle; günlük tavan hesabı) */
   countSince: (db, sinceIso) => db.prepare('SELECT COUNT(*) AS c FROM sms_log WHERE created_at >= ?').get(sinceIso).c,
   countBetween: (db, fromIso, toIso) => {
     const rows = db.prepare('SELECT status, COUNT(*) AS c FROM sms_log WHERE created_at >= ? AND created_at < ? GROUP BY status').all(fromIso, toIso);
-    const out = { sent: 0, failed: 0 };
+    const out = { sent: 0, failed: 0, simulated: 0 }; // simulated 'sent' sayımına katılmaz
     for (const r of rows) out[r.status] = r.c;
     return out;
   },
