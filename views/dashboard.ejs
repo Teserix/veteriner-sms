@@ -36,27 +36,27 @@
   <div class="alert warn"><%- icon('clock') %><div>Otomatik gönderim bu klinik için <strong>kapalı</strong>. Hatırlatmalar yalnızca elle gönderilir.<% if (user.role === 'admin') { %> <a href="/ayarlar#gonderim">Gönderim ayarları</a><% } %></div></div>
 <% } %>
 
-<div class="kpis">
-  <a class="kpi accent" href="#bugun">
-    <div class="kpi-top"><span class="kpi-label">Bugün gönderilecek</span><span class="kpi-icon"><%- icon('send') %></span></div>
-    <div class="kpi-value"><%= due.length %></div>
-    <div class="kpi-foot"><%= schedulerOn ? `Otomatik: ${settings.send_hour_start}:00 – ${settings.send_hour_end}:00` : 'Otomatik gönderim kapalı' %></div>
+<div class="stat-strip">
+  <a class="stat-item" href="#bugun">
+    <span class="stat-label">Bugün gönderilecek</span>
+    <span class="stat-value"><%= due.length %></span>
+    <span class="stat-foot"><%= schedulerOn ? `Otomatik: ${settings.send_hour_start}:00 – ${settings.send_hour_end}:00` : 'Otomatik gönderim kapalı' %></span>
   </a>
-  <a class="kpi attn<%= attention ? ' hot' : '' %>" href="<%= attention ? '#dikkat' : '/hatirlatmalar?status=failed' %>">
-    <div class="kpi-top"><span class="kpi-label">Dikkat gerektiren</span><span class="kpi-icon"><%- icon('alert') %></span></div>
-    <div class="kpi-value"><%= attention %></div>
-    <div class="kpi-foot"><%= overdue.length %> süresi geçmiş · <%= failed.length %> gönderilemedi</div>
+  <a class="stat-item" href="<%= attention ? '#dikkat' : '/hatirlatmalar?status=failed' %>">
+    <span class="stat-label">Dikkat gerektiren</span>
+    <span class="stat-value<%= attention ? ' warn' : '' %>"><%= attention %></span>
+    <span class="stat-foot"><%= overdue.length %> süresi geçmiş · <%= failed.length %> gönderilemedi</span>
   </a>
-  <a class="kpi" href="/hatirlatmalar?status=pending">
-    <div class="kpi-top"><span class="kpi-label">Bekleyen hatırlatma</span><span class="kpi-icon"><%- icon('bell') %></span></div>
-    <div class="kpi-value"><%= counts.pending %></div>
-    <div class="kpi-foot"><%= counts.owners %> hasta sahibi · <%= counts.pets %> hayvan</div>
+  <a class="stat-item" href="/hatirlatmalar?status=pending">
+    <span class="stat-label">Bekleyen hatırlatma</span>
+    <span class="stat-value"><%= counts.pending %></span>
+    <span class="stat-foot"><%= counts.owners %> hasta sahibi · <%= counts.pets %> hayvan</span>
   </a>
-  <a class="kpi" href="/sms">
-    <div class="kpi-top"><span class="kpi-label"><%= counts.monthLabel %> ayında gönderilen SMS</span><span class="kpi-icon"><%- icon('message') %></span></div>
-    <div class="kpi-value"><%= counts.smsSentMonth %><% if (counts.smsFailedMonth) { %> <span class="badge failed"><%= counts.smsFailedMonth %> hata</span><% } %></div>
-    <div class="meter<%= capPct >= 80 ? ' hot' : '' %>" role="img" aria-label="Bugünkü SMS kullanımı: <%= counts.usedToday %> / <%= counts.capToday %>"><span class="w-<%= capPct %>"></span></div>
-    <div class="kpi-foot">Bugün: <%= counts.usedToday %> / <%= counts.capToday %> günlük sınır</div>
+  <a class="stat-item" href="/sms">
+    <span class="stat-label"><%= counts.monthLabel %> ayında gönderilen SMS</span>
+    <span class="stat-value"><%= counts.smsSentMonth %><% if (counts.smsFailedMonth) { %><span class="stat-extra"><%= counts.smsFailedMonth %> hata</span><% } %></span>
+    <span class="meter<%= capPct >= 80 ? ' hot' : '' %>" role="img" aria-label="Bugünkü SMS kullanımı: <%= counts.usedToday %> / <%= counts.capToday %>"><span class="w-<%= capPct %>"></span></span>
+    <span class="stat-foot">Bugün: <%= counts.usedToday %> / <%= counts.capToday %> günlük sınır</span>
   </a>
 </div>
 
@@ -70,7 +70,7 @@
         </div>
       </div>
       <% if (!due.length) { %>
-        <div class="empty-state ok"><span class="es-icon"><%- icon('check-circle') %></span><span class="es-title">Bugün gönderilecek hatırlatma yok</span><span class="es-text">Yeni bir hasta geldiğinde "Hızlı kayıt" ile sahibini, hayvanını ve ilk hatırlatmasını tek seferde girebilirsiniz.</span></div>
+        <div class="empty-state"><span class="es-title">Bugün gönderilecek hatırlatma yok</span><span class="es-text">Yeni bir hasta geldiğinde "Hızlı kayıt" ile sahibini, hayvanını ve ilk hatırlatmasını tek seferde girebilirsiniz.</span></div>
       <% } else { %>
         <%- include('partials/reminder_list', { rows: due, actions: 'send' }) %>
       <% } %>
@@ -104,7 +104,7 @@
     <section class="card flush" aria-labelledby="h-yarin">
       <div class="card-head"><h2 class="section-title" id="h-yarin">Yarın gönderilecekler <span class="count-pill"><%= tomorrow.length %></span></h2></div>
       <% if (!tomorrow.length) { %>
-        <div class="empty-state compact"><span class="es-icon"><%- icon('inbox') %></span><span class="es-text">Yarın için hatırlatma yok.</span></div>
+        <div class="empty-state compact"><span class="es-text">Yarın için hatırlatma yok.</span></div>
       <% } else { %>
         <ul class="agenda"><li class="agenda-day"><ul class="agenda-items">
           <% for (const r of tomorrow) { %>
@@ -123,7 +123,7 @@
         <a class="small" href="/hatirlatmalar?range=week">Tümü</a>
       </div>
       <% if (!byDay.length) { %>
-        <div class="empty-state compact"><span class="es-icon"><%- icon('calendar') %></span><span class="es-text">Yaklaşan hatırlatma yok.</span></div>
+        <div class="empty-state compact"><span class="es-text">Yaklaşan hatırlatma yok.</span></div>
       <% } else { %>
         <ul class="agenda">
           <% for (const g of byDay) { %>

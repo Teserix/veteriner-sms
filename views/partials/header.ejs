@@ -11,9 +11,10 @@
   const _icon = (typeof icon === 'function') ? icon : () => '';
   const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const isActive = (p, extra) => _path === p || !!(extra && extra.some((x) => _path.startsWith(x)));
-  const nav = (p, label, ic, extra, count) => {
+  // tour: karşılama turu kancası (data-tour="..."; public/tour.js bu adları arar)
+  const nav = (p, label, ic, extra, count, tour) => {
     const on = isActive(p, extra);
-    return `<a href="${esc(p)}" class="nav-link${on ? ' active' : ''}"${on ? ' aria-current="page"' : ''}>${_icon(ic)}<span class="nav-label">${esc(label)}</span>${count ? `<span class="nav-count" aria-label="${count} açık">${count}</span>` : ''}</a>`;
+    return `<a href="${esc(p)}" class="nav-link${on ? ' active' : ''}"${on ? ' aria-current="page"' : ''}${tour ? ` data-tour="${esc(tour)}"` : ''}>${_icon(ic)}<span class="nav-label">${esc(label)}</span>${count ? `<span class="nav-count" aria-label="${count} açık">${count}</span>` : ''}</a>`;
   };
   const initials = (n) => String(n || '?').trim().split(/\s+/).filter((w) => !/^(dr|vet|hek)\.?$/i.test(w)).slice(0, 2).map((w) => w[0]).join('').toLocaleUpperCase('tr') || '?';
   const roleLabel = _user ? ({ superadmin: 'Sistem yöneticisi', admin: 'Klinik yöneticisi', staff: 'Personel' }[_user.role] || '') : '';
@@ -51,12 +52,12 @@
     <% if (_user.clinicName) { %><div class="clinic-chip" title="<%= _user.clinicName %>"><%- _icon('building') %><span><%= _user.clinicName %></span></div><% } %>
     <nav class="nav">
       <% if (isClinic) { %>
-        <a class="btn block nav-cta" href="/hizli-kayit"><%- _icon('zap') %>Hızlı kayıt</a>
+        <a class="btn block nav-cta" href="/hizli-kayit" data-tour="hizli-kayit"><%- _icon('plus') %>Hızlı kayıt</a>
         <div class="nav-group">
           <%- nav('/', 'Özet', 'home') %>
-          <%- nav('/hatirlatmalar', 'Hatırlatmalar', 'bell', ['/hatirlatmalar']) %>
-          <%- nav('/sahipler', 'Hasta Sahipleri', 'users', ['/sahipler', '/hayvanlar']) %>
-          <%- nav('/sms', 'SMS Geçmişi', 'message', ['/sms']) %>
+          <%- nav('/hatirlatmalar', 'Hatırlatmalar', 'bell', ['/hatirlatmalar'], 0, 'hatirlatmalar') %>
+          <%- nav('/sahipler', 'Hasta Sahipleri', 'users', ['/sahipler', '/hayvanlar'], 0, 'sahipler') %>
+          <%- nav('/sms', 'SMS Geçmişi', 'message', ['/sms'], 0, 'sms') %>
         </div>
         <div class="nav-group">
           <div class="nav-heading">Uyum</div>
@@ -67,7 +68,7 @@
           <div class="nav-heading">Yönetim</div>
           <%- nav('/iceaktar', 'İçe aktar', 'upload', ['/iceaktar']) %>
           <%- nav('/kullanicilar', 'Kullanıcılar', 'user-check', ['/kullanicilar']) %>
-          <%- nav('/ayarlar', 'Ayarlar', 'settings', ['/ayarlar']) %>
+          <%- nav('/ayarlar', 'Ayarlar', 'settings', ['/ayarlar'], 0, 'ayarlar') %>
         </div>
         <% } %>
       <% } else if (_user.role === 'superadmin') { %>
