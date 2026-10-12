@@ -240,9 +240,17 @@ test('9) ayarlar: kaydet, kimlik bilgisi, test SMS ve günlük tavan', async () 
   assert.equal(r.status, 302);
   r = await c.post('/ayarlar/test', { _csrf: csrf, phone: '05001112233' });
   assert.ok(r.location.includes('err=') && decodeURIComponent(r.location.replace(/\+/g, ' ')).includes('simüle edildi, gönderilmedi'), r.location);
+  // simüle satırlar tavana sayılmaz: tekrar simüle edilir, tavan mesajı gelmez
+  r = await c.post('/ayarlar/test', { _csrf: csrf, phone: '05001112233' });
+  assert.ok(decodeURIComponent(r.location.replace(/\+/g, ' ')).includes('simüle edildi'), r.location);
+  // demo numarası 'sent' sayılır: 2 gönderim tavanı (2) doldurur, üçüncüsü reddedilir
+  for (let k = 0; k < 2; k++) {
+    r = await c.post('/ayarlar/test', { _csrf: csrf, phone: '05150001001' });
+    assert.ok(r.location.includes('ok='), r.location);
+  }
   r = await c.post('/ayarlar/test', { _csrf: csrf, phone: '05001112233' });
   assert.ok(r.location.includes('err='), r.location);
-  assert.ok(decodeURIComponent(r.location).includes('sınır'), decodeURIComponent(r.location));
+  assert.ok(decodeURIComponent(r.location.replace(/\+/g, ' ')).includes('Günlük SMS sınırına ulaşıldı'), decodeURIComponent(r.location));
 });
 
 test('10) kullanıcılar: personel oluştur, personel olarak 403 kontrolleri', async () => {
