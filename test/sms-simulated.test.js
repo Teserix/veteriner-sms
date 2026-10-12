@@ -12,7 +12,8 @@ delete process.env.SMS_MODE;
 const { clinics } = await import('../src/db/master.js');
 const { openTenant, closeAll, setSetting, getSettings, owners, pets, reminders, smsLog } = await import('../src/db/tenant.js');
 const { processClinic, sendReminderSms, startScheduler, stopScheduler } = await import('../src/scheduler.js');
-const { dispatch } = await import('../src/sms/dispatch.js');
+const { dispatch, usedToday } = await import('../src/sms/dispatch.js');
+const { auditLog } = await import('../src/db/master.js');
 const { config } = await import('../src/config.js');
 const { randomId } = await import('../src/crypto.js');
 const { nowIso, nowLocal } = await import('../src/util.js');
@@ -93,6 +94,24 @@ describe('simüle sonuç', () => {
     assert.equal(r4.simulated, 1);
     assert.equal(rows(c.db).length, 2);
     assert.equal(reminders.get(c.db, c.rid).attempts, 0, 'sonsuz deneme sayacı artmaz');
+  });
+
+  test('simüle gönderimler günlük tavana sayılmaz; tavan 1 iken 3 hatırlatma da simüle edilir, turlar sonsuz döngüye girmez', async () => {
+    const c = mk();
+    setSetting(c.db, 'daily_sms_limit', '1');
+    const at = nowIso();
+    const pet = c.db.prepare('SELECT pet_id FROM reminders WHERE id = ?').get(c.rid).pet_id;
+    for (const t of ['Karma', 'Parazit']) reminders.create(c.db, { pet_id: pet, type: 'asi', title: t, due_date: TODAY, notify_days_before: 0, created_at: at });
+    const r1 = await processClinic(c.id, NOW);
+    assert.deepEqual(r1, { sent: 0, failed: 0, skipped: 0, simulated: 3 });
+    assert.equal(usedToday(c.db), 0);
+    assert.equal(auditLog.recent(500, c.id).filter((r) => r.action === 'sms.cap').length, 0);
+    for (let k = 0; k < 5; k++) assert.deepEqual(await processClinic(c.id, LATER), { sent: 0, failed: 0, skipped: 3 });
+    assert.equal(rows(c.db).length, 3);
+    assert.equal(konsol().length, 3);
+    // gerçek (simüle olmayan) satır tavana sayılır
+    c.db.prepare(`INSERT INTO sms_log (phone, message, provider, status, created_at) VALUES ('905321234567', 'x', 'netgsm', 'failed', ?)`).run(nowIso());
+    assert.equal(usedToday(c.db), 1);
   });
 
   test("test SMS (dispatch kind=test): sms_log 'simulated'", async () => {

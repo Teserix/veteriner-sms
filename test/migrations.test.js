@@ -23,6 +23,66 @@ function freshDb(name) {
 }
 
 describe('tenant migrasyonları', () => {
+  const seqOf = (db) => db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'sms_log'").get()?.seq;
+  const seqRows = (db) => db.prepare("SELECT COUNT(*) AS c FROM sqlite_sequence WHERE name LIKE 'sms_log%'").get().c;
+  const addLog = (db, msg) => db.prepare(`INSERT INTO sms_log (phone, message, provider, status, created_at) VALUES ('905321234567', ?, 'netgsm', 'sent', '2026-09-01T10:00:00Z')`).run(msg).lastInsertRowid;
+  // Dev'de uygulanmış eski migrasyon 5: sequence adımı olmadan (aynı SQL'den o satırlar çıkarılır)
+  const OLD_M5 = TENANT_MIGRATIONS[4]
+    .replace(/DELETE FROM sqlite_sequence WHERE name = 'sms_log_v5';/, '')
+    .replace(/INSERT INTO sqlite_sequence \(name, seq\) SELECT 'sms_log_v5'[\s\S]*?FROM sms_log_v5\), 0\)\);/, '');
+
+  test('migrasyon 5 (yeni): silinmiş yüksek id varken sqlite_sequence korunur; 6 ile birlikte idempotent', () => {
+    const db = freshDb('seq1.db');
+    migrate(db, TENANT_MIGRATIONS.slice(0, 4));
+    for (let k = 1; k <= 10; k++) addLog(db, 'm' + k);
+    db.prepare('DELETE FROM sms_log WHERE id > 3').run(); // en yüksek id'ler silindi; seq 10
+    assert.equal(seqOf(db), 10);
+    migrate(db, TENANT_MIGRATIONS);
+    assert.equal(seqOf(db), 10);
+    assert.equal(seqRows(db), 1, 'sms_log_v5 satırı kalmamalı');
+    assert.equal(addLog(db, 'yeni'), 11, 'silinmiş id yeniden kullanılmamalı');
+    const snap = db.prepare('SELECT * FROM sqlite_sequence ORDER BY name').all();
+    migrate(db, TENANT_MIGRATIONS);
+    assert.deepEqual(db.prepare('SELECT * FROM sqlite_sequence ORDER BY name').all(), snap);
+    db.close();
+  });
+
+  test('migrasyon 5 (yeni): boş sms_log ve hiç satır görmemiş tablo', () => {
+    const db = freshDb('seq2.db');
+    migrate(db, TENANT_MIGRATIONS.slice(0, 4));
+    migrate(db, TENANT_MIGRATIONS);
+    assert.ok((seqOf(db) ?? 0) === 0);
+    assert.equal(seqRows(db) <= 1, true);
+    assert.equal(addLog(db, 'ilk'), 1);
+    db.close();
+  });
+
+  test('migrasyon 6: eski 5 uygulanmış DB (dev) — seq >= MAX(id) garanti; 5 kodundaki yeni adım burada çalışmaz', () => {
+    const db = freshDb('seq3.db');
+    migrate(db, TENANT_MIGRATIONS.slice(0, 4));
+    for (let k = 1; k <= 8; k++) addLog(db, 'm' + k);
+    db.prepare('DELETE FROM sms_log WHERE id > 5').run();
+    migrate(db, [...TENANT_MIGRATIONS.slice(0, 4), OLD_M5]); // dev'deki durum: v5, eski kod
+    assert.equal(userVersion(db), 5);
+    assert.equal(seqOf(db), 5, 'eski 5 silinmiş yüksek id sırasını kaybediyordu');
+    // sequence satırı da kaybolmuş/düşmüş olsun: 6 onu MAX(id)'e tamamlar
+    db.prepare("UPDATE sqlite_sequence SET seq = 2 WHERE name = 'sms_log'").run();
+    migrate(db, TENANT_MIGRATIONS);
+    assert.equal(userVersion(db), TENANT_MIGRATIONS.length);
+    assert.equal(seqOf(db), 5);
+    db.prepare("DELETE FROM sqlite_sequence WHERE name = 'sms_log'").run();
+    db.exec(TENANT_MIGRATIONS[5]); // satır yoksa eklenir
+    assert.equal(seqOf(db), 5);
+    db.exec(TENANT_MIGRATIONS[5]); // tekrar: değişmez, çift satır yok
+    assert.equal(seqOf(db), 5);
+    assert.equal(seqRows(db), 1);
+    db.prepare("UPDATE sqlite_sequence SET seq = 50 WHERE name = 'sms_log'").run();
+    db.exec(TENANT_MIGRATIONS[5]); // yüksekse dokunulmaz
+    assert.equal(seqOf(db), 50);
+    assert.ok(addLog(db, 'yeni') > 5);
+    db.close();
+  });
+
   test("migrasyon 5: sms_log 'simulated' kabul eder; mevcut satırlar, dizinler korunur; reminders.simulated_at", () => {
     const db = freshDb('t5.db');
     migrate(db, TENANT_MIGRATIONS.slice(0, 4)); // eski şema (v4)

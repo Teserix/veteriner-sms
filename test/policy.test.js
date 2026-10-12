@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { setupEnv } from './helpers.js';
 
 setupEnv();
-const { bodyProblems, imitatesTail, templateProblems, contentProblems, composeMessage, identityLine, optOutLine, normalizeTr, TEMPLATE_VARS } = await import('../src/sms/policy.js');
+const { bodyProblems, imitatesTail, containsUrl, lookalikeSkeleton, URL_PROBLEM, hasMandatoryTail, templateProblems, contentProblems, composeMessage, identityLine, optOutLine, normalizeTr, TEMPLATE_VARS } = await import('../src/sms/policy.js');
 const { MAX_MESSAGE_LENGTH } = await import('../src/sms/index.js');
 const { legalProblems, DEFAULT_SETTINGS } = await import('../src/db/tenant.js');
 
@@ -110,5 +110,65 @@ describe('gövdede iptal/ret satırı taklidi (imitatesTail / bodyProblems)', ()
   for (const t of negatives) test('yanlış pozitif yok: ' + t, () => {
     assert.equal(imitatesTail(t), false, t);
     assert.ok(!bodyProblems(t, tacir).some((p) => p.includes('iptal satırı')), t);
+  });
+});
+
+describe('filtre sertleştirme: NFKC, görünmez karakter, benzer karakter', () => {
+  const tail = (t) => bodyProblems(t, tacir).some((p) => p.includes('iptal satırı'));
+  test('normalizeTr: NFKC tam genişlik ve görünmez karakterler', () => {
+    assert.equal(normalizeTr('İPTAL：'), 'iptal:');
+    assert.equal(normalizeTr('ＩＰＴＡＬ'), 'iptal');
+    for (const z of ['\u200B', '\u200C', '\u200D', '\u200E', '\u200F', '\u2060', '\uFEFF', '\u00AD']) {
+      assert.equal(normalizeTr(`ip${z}tal`), 'iptal', 'U+' + z.charCodeAt(0).toString(16));
+    }
+  });
+  const positives = [
+    'İptal： x', 'IPTAL：0212', 'ＩＰＴＡＬ: x', 'ip\u200Btal: x', 'ip\u00ADtal: x', 'İp\u2060tal için kısa-link', 'k\u200Dısa\uFEFF link',
+    'iptaI: x', 'ipta1: x', '1ptal: x', '!ptal: x', '|ptal: x', 'IPTA1 İÇİN L1NK', 'kısa-1ink', 'SMS a1mamak için', 'l1steden çık',
+    'ipta\u200B1：x', 'R3T: x',
+  ];
+  for (const t of positives) test('taklit yakalanır: ' + JSON.stringify(t), () => { assert.equal(imitatesTail(t), true); assert.ok(tail(t)); });
+  const negatives = [
+    'Sayın Ali, Boncuk için saat 10:30 randevunuz vardır.', 'Kilo: 4,5 kg; 15 ml şurup getirin.', 'Adres: Moda Cd. No:17 Kat:1',
+    'Randevu iptali için 0212 555 00 00 numarasını arayın.', 'Lütfen 1 saat önce gelin.', 'Aşı kartı (l1) hazır.',
+    'Pamuk 3 yaşına girdi, yıllık kontrol zamanı.', 'Yeni randevu tarihi: 12.10.2026', 'Ferret aşısı zamanı geldi.',
+  ];
+  for (const t of negatives) test('yanlış pozitif yok: ' + JSON.stringify(t), () => {
+    assert.equal(imitatesTail(t), false);
+    assert.deepEqual(bodyProblems(t, tacir), []);
+  });
+  test('iskelet yalnız denetim içindir: gönderilen metni değiştirmez', () => {
+    assert.equal(lookalikeSkeleton('ipta1'), 'iptai');
+    assert.ok(composeMessage(tacir, 'Saat 10:30 l1').includes('Saat 10:30 l1'));
+  });
+});
+
+describe('gövdede URL reddi', () => {
+  const positives = [
+    'Bilgi: http://ornek.com', 'https://klinik.com.tr/randevu', 'HTTPS://X.Y', 'www.klinik.com', 'WWW.Klinik.Com', 'klinik.com.tr/randevu',
+    'ornek.org/a', 'bit.ly', 'bit.ly/abc', 'Detay: tinyurl.com/x', 'goo.gl', 'cutt.ly/a', 't.co/x', 'is.gd', 'rb.gy/a', 's.id/a',
+    'ｈｔｔｐｓ：／／ornek.com', 'ht\u200Btps://ornek.com', 'w\u200Bww.ornek.com', 'bit\u00AD.ly/x', 'BİT.LY/x',
+  ];
+  for (const t of positives) test('reddedilir: ' + JSON.stringify(t), () => {
+    assert.equal(containsUrl(t), true);
+    assert.ok(bodyProblems(t, tacir).includes(URL_PROBLEM));
+    assert.ok(templateProblems(t).includes(URL_PROBLEM));
+  });
+  const negatives = [
+    'Randevu 12.10.2026 saat 10.30da.', 'Dr. Ayşe Hanım sizi bekliyor.', 'Kilo 4.5 kg, doz 0.5 ml.', 'Aşı/kontrol günü yarın.',
+    'Sayın {sahip}, {hayvan} için {tarih} {tur}. {klinik}', 'Moda Cd. No:17/2 Kadıköy', 'Aşı kartını getirin, kısa sürer.',
+  ];
+  for (const t of negatives) test('kabul edilir: ' + JSON.stringify(t), () => {
+    assert.equal(containsUrl(t), false);
+    assert.ok(!bodyProblems(t, tacir).includes(URL_PROBLEM));
+  });
+  test('sistemin ret bağlantısı gövde sayılmaz; kuyruk bozulmaz', () => {
+    const body = 'Boncuk için aşı günü yarın.';
+    const opts = { clinicId: 'abcdefabcdef', optOutToken: 'a'.repeat(32) };
+    assert.deepEqual(bodyProblems(body, tacir, opts), []);
+    const full = composeMessage(tacir, body, opts);
+    assert.ok(/Iptal: https?:\/\/\S+\/ret\/abcdefabcdef\.a{32} Tel:/.test(full), full);
+    assert.equal(hasMandatoryTail(full, tacir, opts.clinicId, opts.optOutToken), true);
+    assert.equal(containsUrl(full), true); // tam metinde var, ama denetim yalnız gövdeye bakar
   });
 });
