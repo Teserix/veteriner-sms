@@ -2,7 +2,7 @@ import { config } from './config.js';
 import { clinics } from './db/master.js';
 import { openTenant, getSettings, reminders, owners } from './db/tenant.js';
 import { dispatchUnlocked, lockKey } from './sms/dispatch.js';
-import { composeFromTemplate, bodyProblems } from './sms/policy.js';
+import { composeFromTemplate, bodyProblems, previewParts, sameBody, oneLineBody } from './sms/policy.js';
 import { randomId } from './crypto.js';
 import { withLock } from './lock.js';
 import { nowLocal, nowIso, todayLocal, formatDate, addDays, REMINDER_TYPES } from './util.js';
@@ -65,7 +65,10 @@ function createNextOccurrence(db, r, at, today) {
  * Tek bir hatırlatma için SMS gönderir, durumu günceller, tekrar varsa sonrakini oluşturur.
  * Zamanlayıcı ve "Şimdi gönder" düğmesi bunu kullanır. Klinik kilidi altında çalışır:
  * satır yeniden okunur, artık beklemede değilse gönderilmez (çift gönderim yok).
- * bodyOverride (elle düzenlenmiş gövde) kilit içinde bodyProblems ile yeniden denetlenir; geçersizse gönderilmez.
+ * bodyOverride: kullanıcının önizlemede gönderdiği gövde (string), şablona dönüş (null) ya da verilmez (undefined:
+ * kayıtlı düzenlenmiş gövde, örn. sağlayıcı hatasından sonraki otomatik tekrar). Karşılaştırma ve bodyProblems denetimi
+ * kilit içinde taze kayıtla yapılır; böylece gönderilen metin kullanıcının gördüğüyle aynıdır. Sonuçta edited /
+ * originalLength / newLength (denetim kaydı için; metin değil) döner.
  */
 export function sendReminderSms(clinicId, db, settings, r, sentBy = 'zamanlayici', now = new Date(), { bodyOverride } = {}) {
   return withLock(lockKey(clinicId), async () => {
@@ -78,14 +81,23 @@ export function sendReminderSms(clinicId, db, settings, r, sentBy = 'zamanlayici
     const prevAttempt = fresh.last_attempt_at;
     reminders.claim(db, fresh.id, at); // çökme koruması: yarım kalan gönderim 4 saat içinde tekrar denenmez
     fresh.opt_out_token = ensureOptOutToken(db, fresh.owner_id, fresh.opt_out_token);
-    if (bodyOverride != null) {
-      const problems = bodyProblems(bodyOverride, settings, { clinicId, optOutToken: fresh.opt_out_token });
+    const optOpts = { clinicId, optOutToken: fresh.opt_out_token };
+    const vars = buildReminderVars(settings, fresh);
+    const { originalBody } = previewParts(settings, vars, optOpts);
+    let override = bodyOverride === undefined ? (fresh.body_override ?? null) : bodyOverride;
+    if (override != null && sameBody(override, originalBody)) override = null;
+    const lengths = { originalLength: oneLineBody(originalBody).length };
+    if (override != null) {
+      const problems = bodyProblems(override, settings, optOpts);
       if (problems.length) {
         reminders.setLastAttempt(db, fresh.id, prevAttempt); // gönderim denenmedi, izi geri al
-        return { ok: false, skipped: 'invalid', error: problems.join(' ') };
+        return { ok: false, skipped: 'invalid', error: problems.join(' '), edited: true, ...lengths, newLength: oneLineBody(override).length };
       }
     }
-    const message = buildMessage(settings, fresh, clinicId, bodyOverride);
+    if (bodyOverride !== undefined) reminders.setBodyOverride(db, fresh.id, override);
+    const parts = previewParts(settings, vars, { ...optOpts, bodyOverride: override ?? undefined });
+    const message = parts.full;
+    const meta = { edited: override != null, ...lengths, newLength: parts.body.length };
     const result = await dispatchUnlocked({
       clinicId, db, settings, kind: 'reminder', to: fresh.owner_phone, message, optOutToken: fresh.opt_out_token,
       owner: { id: fresh.owner_id, name: fresh.owner_name, sms_opt_in: fresh.sms_opt_in },
@@ -105,7 +117,7 @@ export function sendReminderSms(clinicId, db, settings, r, sentBy = 'zamanlayici
       // Kalıcı başarısızlık tekrar serisini bitirmesin: sonraki dönem yine oluşturulur
       if (after?.status === 'failed') createNextOccurrence(db, fresh, at, today);
     }
-    return { ...result, message };
+    return { ...result, message, ...meta };
   });
 }
 

@@ -115,6 +115,12 @@ function tailOf(settings, clinicId, optOutToken) {
   return { identity, optOut, tail: [identity, optOut].filter(Boolean).join(' ') };
 }
 
+/** composeMessage'in gövdeye uyguladığı boşluk normalleştirmesi */
+export const oneLineBody = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+
+/** Kullanıcının gönderdiği gövde şablondan çıkanla aynı mı (boşluk farkları yok sayılır) */
+export const sameBody = (a, b) => oneLineBody(a) === oneLineBody(b);
+
 /** composeMessage'in parçalı hâli: önizleme ve gönderim aynı birleştirmeyi kullanır */
 function composeParts(settings, body, { clinicId = '', optOutToken = '' } = {}) {
   const { identity, optOut, tail } = tailOf(settings, clinicId, optOutToken);
@@ -143,9 +149,11 @@ export function previewParts(settings, vars, { clinicId = '', optOutToken = '', 
   const parts = composeParts(settings, source, { clinicId, optOutToken });
   return {
     ...parts,
-    segments: smsSegments(parts.full),
-    edited: bodyOverride != null && String(bodyOverride).trim() !== String(originalBody).trim(),
+    segments: smsSegments(parts.full, { turkishShift: usesTurkishShift(settings) }),
+    edited: bodyOverride != null && !sameBody(bodyOverride, originalBody),
     originalBody,
+    originalBodyOneLine: oneLineBody(originalBody),
+    turkishShift: usesTurkishShift(settings),
     maxBodyLength: MAX_BODY_LENGTH,
   };
 }
@@ -190,34 +198,50 @@ export function hasMandatoryTail(message, settings, clinicId = '', token = '') {
 /* ---------- SMS parça sayacı ---------- */
 
 /**
- * Kodlama kararı: Yalnızca GSM 03.38 temel tablosu + genişletme tablosu kullanılır. Ulusal (Türkçe) kaydırma
- * tablosu KULLANILMAZ; Türk sağlayıcıları bunu desteklemiyor. Bu yüzden temel tabloda olmayan tek bir karakter
- * (ş ğ ı İ Ş Ğ ç …) bütün mesajı UCS-2'ye geçirir (70/67). Ç, Ö, Ü, ö, ü temel tablodadır.
- * GSM-7'de genişletme karakterleri (^ { } \ [ ~ ] | €) 2 birim sayılır; UCS-2'de birim = UTF-16 kod birimi.
- * Parça sınırında bir genişletme çiftinin bölünmemesi gibi sağlayıcı ayrıntıları hesaba katılmaz.
+ * Kodlama: GSM 03.38 temel tablosu + genişletme tablosu (^ { } \ [ ~ ] | € = 2 birim). Ç, Ö, Ü, ö, ü temel tablodadır.
+ * Türkçe tek kaydırma tablosu (3GPP TS 23.038 A.2.1: Ğ İ Ş ç ğ ı ş) yalnızca sağlayıcı destekliyorsa
+ * (Netgsm encoding:"TR"; usesTurkishShift) kullanılır: bu harfler 2 birim sayılır ve UDH'deki 3 baytlık dil
+ * bilgisi yüzünden parça kapasitesi 155/149 olur ("gsm7tr"). Kaydırma tablosu yoksa ya da tabloda olmayan bir
+ * karakter varsa bütün mesaj UCS-2'ye geçer (70/67; birim = UTF-16 kod birimi).
+ * Çok parçalı mesajda 2 birimlik karakter (genişletme çifti / vekil çift) parça sınırında bölünemez; sonraki parçaya geçer.
  * İstemci (public/app.js) aynı mantığı uygular; ortak vektörler test/fixtures/sms-segments.json içindedir.
  */
-export const SMS_LIMITS = Object.freeze({ gsm7: { single: 160, multi: 153 }, ucs2: { single: 70, multi: 67 } });
+export const SMS_LIMITS = Object.freeze({
+  gsm7: { single: 160, multi: 153 }, gsm7tr: { single: 155, multi: 149 }, ucs2: { single: 70, multi: 67 },
+});
 
 const GSM7_BASIC = new Set(
   '@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&\'()*+,-./0123456789:;<=>?' +
   '¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà',
 );
 const GSM7_EXT = new Set('^{}\\[~]|€');
+const GSM7_TR_SHIFT = new Set('ĞİŞçğış');
 
-export function smsSegments(text) {
+/** Sağlayıcı Türkçe tek kaydırma tablosunu destekliyor mu (Netgsm REST v2 encoding:"TR", src/sms/index.js) */
+export function usesTurkishShift(settings) {
+  return settings?.sms_provider === 'netgsm';
+}
+
+export function smsSegments(text, { turkishShift = false } = {}) {
   const s = String(text ?? '');
-  let gsmUnits = 0;
   let encoding = 'gsm7';
+  let sizes = [];
   for (const ch of s) {
-    if (GSM7_BASIC.has(ch)) gsmUnits += 1;
-    else if (GSM7_EXT.has(ch)) gsmUnits += 2;
+    if (GSM7_BASIC.has(ch)) sizes.push(1);
+    else if (GSM7_EXT.has(ch)) sizes.push(2);
+    else if (turkishShift && GSM7_TR_SHIFT.has(ch)) { sizes.push(2); encoding = 'gsm7tr'; }
     else { encoding = 'ucs2'; break; }
   }
-  const units = encoding === 'gsm7' ? gsmUnits : s.length;
+  if (encoding === 'ucs2') sizes = Array.from(s, (ch) => ch.length);
+  const units = sizes.reduce((a, b) => a + b, 0);
   const { single, multi } = SMS_LIMITS[encoding];
-  const segments = units === 0 ? 0 : units <= single ? 1 : Math.ceil(units / multi);
-  const perSegment = segments > 1 ? multi : single;
-  const remainingInSegment = segments === 0 ? single : segments * perSegment - units;
-  return { encoding, units, segments, perSegment, remainingInSegment };
+  if (units === 0) return { encoding, units, segments: 0, perSegment: single, remainingInSegment: single };
+  if (units <= single) return { encoding, units, segments: 1, perSegment: single, remainingInSegment: single - units };
+  let segments = 1;
+  let used = 0;
+  for (const u of sizes) {
+    if (used + u > multi) { segments += 1; used = 0; }
+    used += u;
+  }
+  return { encoding, units, segments, perSegment: multi, remainingInSegment: multi - used };
 }

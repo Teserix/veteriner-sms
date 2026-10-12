@@ -19,7 +19,7 @@ function loadClient() {
   vm.runInContext(appSrc.slice(start, end) + '\nthis.smsSegments = smsSegments;', ctx);
   assert.equal(typeof ctx.smsSegments, 'function');
   // vm bağlamındaki nesne başka bir realm'den gelir; deepStrictEqual için düz nesneye çevrilir
-  return (t) => ({ ...ctx.smsSegments(t) });
+  return (t, o) => ({ ...ctx.smsSegments(t, o) });
 }
 
 const textOf = (v) => (v.text != null ? v.text : v.char.repeat(v.count));
@@ -28,8 +28,9 @@ test('istemci sayacı fixture vektörlerinde beklenen değerleri ve sunucuyla ay
   const client = loadClient();
   for (const v of vectors) {
     const t = textOf(v);
-    const c = client(t);
-    assert.deepStrictEqual(c, smsSegments(t), v.name);
+    const o = { turkishShift: !!v.turkishShift };
+    const c = client(t, o);
+    assert.deepStrictEqual(c, smsSegments(t, o), v.name);
     assert.equal(c.encoding, v.encoding, v.name);
     assert.equal(c.units, v.units, v.name);
     assert.equal(c.segments, v.segments, v.name);
@@ -64,6 +65,8 @@ test('rastgele 500 dize (Türkçe/ASCII/genişletme karışımı): istemci = sun
       const chars = Array.from(pool);
       s += chars[Math.floor(rnd() * chars.length)];
     }
-    assert.deepStrictEqual(client(s), smsSegments(s), `dize #${n}: ${JSON.stringify(s.slice(0, 40))}`);
+    for (const o of [{ turkishShift: false }, { turkishShift: true }]) {
+      assert.deepStrictEqual(client(s, o), smsSegments(s, o), `dize #${n} ${JSON.stringify(o)}: ${JSON.stringify(s.slice(0, 40))}`);
+    }
   }
 });
