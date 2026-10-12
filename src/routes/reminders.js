@@ -126,13 +126,15 @@ function sendBlockers(settings, r) {
 
 /** Önizleme ekranının modeli: mesaj policy.previewParts'tan gelir (gönderimle aynı fonksiyon); rotada yeniden kurulmaz */
 // savedOverride: gövde hatırlatmada kayıtlı düzenlenmiş gövdedir (bilgi bandı); data-original yine şablondan gelir
+// Gövde geçersizse (problems) Gönder de kapalı çizilir; bodyInvalid istemciye bu kilidin gövdeye bağlı olduğunu söyler
 function renderPreview(req, res, r, settings, { body, problems = [], status = 200, savedOverride = false } = {}) {
   const parts = previewParts(settings, buildReminderVars(settings, r), {
     clinicId: req.user.clinicId, optOutToken: r.opt_out_token || '', bodyOverride: body,
   });
   const blockers = sendBlockers(settings, r);
   res.status(status).render('reminder_preview', {
-    title: 'SMS önizleme', reminder: r, parts, problems, blockers, canSend: blockers.length === 0,
+    title: 'SMS önizleme', reminder: r, parts, problems, blockers,
+    canSend: blockers.length === 0 && problems.length === 0, bodyInvalid: problems.length > 0,
     bodyValue: body ?? parts.originalBodyOneLine, maxTotal: MAX_MESSAGE_LENGTH, savedOverride,
   });
 }

@@ -165,6 +165,36 @@ kampanya, ilaç ticari adı, teşhis terimi vb. reddedilir. Örnek biçim:
 ` · Gövde boş olamaz` / ` · Sınır aşıldı, gövdeyi kısaltın` ekler. Asıl ret
 sunucudadır.
 
+### Önizleme: geçersiz kayıtlı gövde
+
+`GET /hatirlatmalar/:id/onizle` kayıtlı `body_override`’ı da `bodyProblems` ile denetler.
+Sorun varsa sorun listesi kırmızı bantta görünür, `.sms-saved-override` bandı metnin
+gönderileceğini söylemez («kayıtlı düzenlenmiş gövde geçersiz; bu haliyle gönderilemez ve
+zamanlayıcı da göndermez») ve **Gönder** sunucuda `disabled` çizilir (`canSend` = blokaj yok
+ve gövde sorunu yok). İstemci, gövde bu ilk değerde kaldıkça düğmeyi kapalı tutar
+(`data-invalid-body`); gövde değiştirilince olağan sayaç denetimi geçerlidir, son söz POST’taki
+sunucu denetimindedir. Gövdeden bağımsız engeller (`data-server-blocked="1"`) varken istemci
+düğmeyi hiç açmaz.
+
+### Zamanlayıcı: geçersiz kayıtlı gövde
+
+`src/scheduler.js` `sendReminderSms`, `bodyOverride` verilmediğinde (zamanlayıcı ya da sağlayıcı
+hatasından sonraki otomatik tekrar) hatırlatmadaki kayıtlı `body_override`’ı kullanır ve kilit
+içinde taze kayıtla `bodyProblems` denetimi yapar. Kayıtlı gövde sonradan geçersizleşmişse (ör.
+şablon ya da içerik kuralı değişti, gövdeye `MERSIS:`/`Iptal:` taklidi ya da kontrol karakteri
+girmiş) iki kolay yol bilerek seçilmemiştir. **Şablona sessizce dönülmez**: kullanıcı önizlemede
+belirli bir metni onaylamıştır; onun yerine başka bir metin gitmesi, «önizlenen = gönderilen»
+güvencesini bozar ve kimsenin onaylamadığı bir ileti gönderilmiş olur. **Geçersiz metin de
+gönderilmez**: `bodyProblems` kimlik/iptal satırı taklidini, kontrol karakterlerini ve uzunluk
+aşımını reddeder; bunlar her SMS’te tek ve doğru kimlik satırı ile ret (iptal) imkânı
+zorunluluğunu (Ticari İletişim Yön. m.8/3, m.9/3–4; KVKK/İYS — bkz.
+`docs/mevzuat-uyum-spesifikasyonu.md` ve §2) zayıflatır. Bunun yerine
+`reminders.markAttemptFailed` çağrılır: `last_error` «Kayıtlı düzenlenmiş gövde geçersiz: …»
+olarak yazılır, deneme sayacı artar ve `MAX_ATTEMPTS` (3) sonunda durum `failed` olur (tekrarlı
+hatırlatmada sonraki tekrar yine oluşturulur). Böylece kayıt **Gönderilemeyenler** listesinde
+görünür, bir insan önizlemede gövdeyi düzeltir ya da «Orijinale dön»le şablona döner; deneme
+sayacı ise her zamanlayıcı turunda aynı geçersiz gövdenin sonsuza dek yeniden denenmesini önler.
+
 ---
 
 ## 5. Denetim kaydı
