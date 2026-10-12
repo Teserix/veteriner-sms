@@ -5,6 +5,7 @@
   // Sınıflar / data-* öznitelikleri (public/app.js ve CSS için sözleşme):
   //   .sms-preview            : ekranın kapsayıcısı
   //   .sms-preview-blockers   : gönderimi engelleyen durumlar için uyarı bandı (varsa düğme devre dışı)
+  //   .sms-saved-override     : kayıtlı düzenlenmiş gövde açıldığında bilgi bandı (data-original yine şablondur)
   //   .sms-fixed              : salt okunur parçalar (önek, kimlik satırı, iptal satırı); input değil, metin
   //     .sms-prefix / .sms-identity / .sms-optout
   //   textarea[data-sms-body] : düzenlenebilir tek alan (name="body"), maxlength = MAX_BODY_LENGTH
@@ -35,6 +36,9 @@
   <form method="post" action="/hatirlatmalar/<%= reminder.id %>/gonder">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
     <div class="sms-editor">
+      <% if (typeof savedOverride !== 'undefined' && savedOverride) { %>
+      <div class="alert warn sms-saved-override" role="status"><%- icon('alert') %><span>Bu hatırlatma için daha önce düzenlenmiş bir gövde kayıtlı; gönderimde bu metin kullanılır. Şablona dönmek için "Orijinale dön"e basın.</span></div>
+      <% } %>
       <div class="sms-fixed sms-prefix" title="Sistem tarafından eklenir"><%- icon('shield', 'sms-lock') %><span><%= parts.prefix %></span><span class="sms-fixed-tag">Sabit</span></div>
       <label for="sms-body">Mesaj gövdesi <span class="sms-label-note">yalnız bu kısım düzenlenebilir</span></label>
       <textarea id="sms-body" name="body" rows="5" maxlength="<%= parts.maxBodyLength %>" data-sms-body

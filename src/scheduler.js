@@ -67,7 +67,10 @@ function createNextOccurrence(db, r, at, today) {
  * satır yeniden okunur, artık beklemede değilse gönderilmez (çift gönderim yok).
  * bodyOverride: kullanıcının önizlemede gönderdiği gövde (string), şablona dönüş (null) ya da verilmez (undefined:
  * kayıtlı düzenlenmiş gövde, örn. sağlayıcı hatasından sonraki otomatik tekrar). Karşılaştırma ve bodyProblems denetimi
- * kilit içinde taze kayıtla yapılır; böylece gönderilen metin kullanıcının gördüğüyle aynıdır. Sonuçta edited /
+ * kilit içinde taze kayıtla yapılır; böylece gönderilen metin kullanıcının gördüğüyle aynıdır. Verilen gövde geçersizse
+ * gönderilmez, iz geri alınır (skipped: 'invalid'; rota 400 önizleme gösterir). Kayıtlı gövde sonradan geçersizleşmişse
+ * şablon onun yerine gönderilmez: deneme başarısız sayılır (markAttemptFailed, last_error), MAX_ATTEMPTS sonunda
+ * 'failed' olur; önizlemeden düzeltilip tekrar gönderilebilir. Sonuçta edited /
  * originalLength / newLength (denetim kaydı için; metin değil) döner.
  */
 export function sendReminderSms(clinicId, db, settings, r, sentBy = 'zamanlayici', now = new Date(), { bodyOverride } = {}) {
@@ -90,8 +93,16 @@ export function sendReminderSms(clinicId, db, settings, r, sentBy = 'zamanlayici
     if (override != null) {
       const problems = bodyProblems(override, settings, optOpts);
       if (problems.length) {
-        reminders.setLastAttempt(db, fresh.id, prevAttempt); // gönderim denenmedi, izi geri al
-        return { ok: false, skipped: 'invalid', error: problems.join(' '), edited: true, ...lengths, newLength: oneLineBody(override).length };
+        const invalid = { edited: true, ...lengths, newLength: oneLineBody(override).length };
+        if (bodyOverride !== undefined) {
+          reminders.setLastAttempt(db, fresh.id, prevAttempt); // elle gönderim: kullanıcı 400 önizlemede düzeltir, izi geri al
+          return { ok: false, skipped: 'invalid', error: problems.join(' '), ...invalid };
+        }
+        // Kayıtlı gövde geçersizleşti: şablon onun yerine sessizce gönderilmez; deneme sayılır, last_error görünür olur
+        const error = 'Kayıtlı düzenlenmiş gövde geçersiz: ' + problems.join(' ');
+        reminders.markAttemptFailed(db, fresh.id, at, error, MAX_ATTEMPTS);
+        if (reminders.get(db, fresh.id)?.status === 'failed') createNextOccurrence(db, fresh, at, today);
+        return { ok: false, error, ...invalid };
       }
     }
     if (bodyOverride !== undefined) reminders.setBodyOverride(db, fresh.id, override);

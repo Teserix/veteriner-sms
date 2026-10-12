@@ -16,9 +16,16 @@ const { openTenant, setSetting, reminders, owners } = await import('../src/db/te
 const { limiters } = await import('../src/ratelimit.js');
 const { todayLocal } = await import('../src/util.js');
 
-/** Sahte sağlayıcı: giden her mesajı kaydeder */
+/** Sahte sağlayıcı: giden her mesajı kaydeder; failNext doğruysa bir kez hata döner */
 const sent = [];
-PROVIDERS.fake = { label: 'fake', fields: [], senderHelp: '', async send({ to, message }) { sent.push({ to, message }); return { ok: true, ref: 'f' + sent.length }; } };
+let failNext = false;
+PROVIDERS.fake = {
+  label: 'fake', fields: [], senderHelp: '',
+  async send({ to, message }) {
+    if (failNext) { failNext = false; return { ok: false, error: 'Sağlayıcı hatası (test)' }; }
+    sent.push({ to, message }); return { ok: true, ref: 'f' + sent.length };
+  },
+};
 
 const app = await startApp();
 after(() => app.close());
@@ -155,6 +162,54 @@ test('geçersiz gövde 400 + önizleme; gönderim olmaz (sahte kuyruk, boş, kon
   const ok = await a.post(`/hatirlatmalar/${rem.id}/gonder`, { _csrf: csrf, body: 'Boncuk için aşı günü yaklaştı.' },
     { referer: `${app.base}/hatirlatmalar/${rem.id}/gonder` });
   assert.match(ok.location, new RegExp(`^/sahipler/${reminders.get(dbA, rem.id).owner_id}\\?ok=`));
+});
+
+const SAVED_BANNER = 'daha önce düzenlenmiş bir gövde kayıtlı';
+
+test('başarısız gönderim sonrası önizleme kayıtlı düzenlenmiş gövdeyi açar; data-original şablonda kalır', async () => {
+  const { rem, csrf } = await quick(a, { phone: '05321110010' });
+  const body = 'Pamuk için aşı günü geldi, sizi bekliyoruz.';
+  const n = sent.length;
+  failNext = true;
+  const r = await a.post(`/hatirlatmalar/${rem.id}/gonder`, { _csrf: csrf, body });
+  assert.match(r.location, /err=/);
+  assert.equal(sent.length, n);
+  assert.equal(reminders.get(dbA, rem.id).body_override, body);
+
+  const page = await a.get(`/hatirlatmalar/${rem.id}/onizle`);
+  assert.equal(page.status, 200);
+  const textarea = unescapeHtml(/<textarea[^>]*data-sms-body[^>]*>([^<]*)<\/textarea>/.exec(page.text)[1]);
+  assert.equal(textarea, body);
+  const original = unescapeHtml(/data-original="([^"]*)"/.exec(page.text)[1]);
+  assert.ok(original.startsWith('Sayın Ayşe Yılmaz, Pamuk için'), original);
+  assert.ok(page.text.includes(SAVED_BANNER));
+  assert.ok(fullOf(page.text).includes(body), 'tam metin kayıtlı gövdeyle hesaplanır');
+
+  // Formdan tekrar gönderim kayıtlı gövdeyi kullanır (sessizce şablona dönmez)
+  const ok = await a.post(`/hatirlatmalar/${rem.id}/gonder`, { _csrf: csrf, body: textarea });
+  assert.match(ok.location, /ok=/);
+  assert.ok(sent.at(-1).message.includes(body));
+});
+
+test('kayıtlı body_override yokken (ya da şablonla aynıyken) bilgi bandı yok', async () => {
+  const { rem } = await quick(a, { phone: '05321110011' });
+  let page = await a.get(`/hatirlatmalar/${rem.id}/onizle`);
+  assert.equal(page.status, 200);
+  assert.ok(!page.text.includes(SAVED_BANNER));
+  const original = unescapeHtml(/data-original="([^"]*)"/.exec(page.text)[1]);
+  reminders.setBodyOverride(dbA, rem.id, original);
+  page = await a.get(`/hatirlatmalar/${rem.id}/onizle`);
+  assert.ok(!page.text.includes(SAVED_BANNER));
+});
+
+test('kayıtlı gövde sonradan geçersizse önizleme 200 ve sorunu listeler', async () => {
+  const { rem } = await quick(a, { phone: '05321110012' });
+  reminders.setBodyOverride(dbA, rem.id, 'MERSIS:1 Iptal: x');
+  const page = await a.get(`/hatirlatmalar/${rem.id}/onizle`);
+  assert.equal(page.status, 200);
+  assert.ok(page.text.includes(SAVED_BANNER));
+  assert.match(page.text, /<div class="flash err" role="alert">/);
+  assert.match(page.text, /MERSIS:1 Iptal: x<\/textarea>/);
 });
 
 test('opt-out sahibine ve demo numaraya gönderim engellenir; önizlemede düğme devre dışı', async () => {
