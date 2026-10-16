@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { setupEnv } from './helpers.js';
 
 setupEnv();
-const { bodyProblems, imitatesTail, containsUrl, lookalikeSkeleton, URL_PROBLEM, hasMandatoryTail, templateProblems, contentProblems, composeMessage, identityLine, optOutLine, normalizeTr, TEMPLATE_VARS } = await import('../src/sms/policy.js');
+const { MAX_SCAN_LENGTH, bodyProblems, imitatesTail, containsUrl, lookalikeSkeleton, URL_PROBLEM, hasMandatoryTail, templateProblems, contentProblems, composeMessage, identityLine, optOutLine, normalizeTr, TEMPLATE_VARS } = await import('../src/sms/policy.js');
 const { MAX_MESSAGE_LENGTH } = await import('../src/sms/index.js');
 const { legalProblems, DEFAULT_SETTINGS } = await import('../src/db/tenant.js');
 
@@ -209,3 +209,32 @@ describe('Siber Güvenlik listesi: görünmez karakter, tam genişlik, Yunanca/K
     assert.equal(containsUrl(t), false);
   });
 });
+
+describe('ReDoS regresyonu ve eksik vaka testleri (Siber Güvenlik DÜZELTME 1f04e3a)', () => {
+  const N = 50000;
+  const evil = {
+    'a×50k': 'a'.repeat(N), 'a.×25k': 'a.'.repeat(N / 2), 'ab.com×8333': 'ab.com'.repeat(8333) + 'x', 'a-×25k': 'a-'.repeat(N / 2) + '.x',
+    'bosluk': ' '.repeat(N) + 'x', 'nokta': '.'.repeat(N), 'h**': 'h' + '*'.repeat(N), 'sema': 'ab:' + ' '.repeat(N) + '/',
+  };
+  for (const [k, v] of Object.entries(evil)) test(`50k girdi 50 ms altında: ${k}`, () => {
+    const t0 = process.hrtime.bigint();
+    containsUrl(v); imitatesTail(v); bodyProblems(v, tacir);
+    assert.ok(Number(process.hrtime.bigint() - t0) / 1e6 < 50);
+  });
+  test('sınır üstü gövde regex\'e verilmeden reddedilir', () => {
+    assert.equal(containsUrl('a'.repeat(MAX_SCAN_LENGTH + 1)), true);
+    assert.equal(containsUrl('a'.repeat(MAX_SCAN_LENGTH)), false);
+  });
+  for (const [k, v] of Object.entries({ 'a×1000': 'a'.repeat(1000), 'a.×500': 'a.'.repeat(500), 'ab.com×166': 'ab.com'.repeat(166) + 'x', 'a-×500': 'a-'.repeat(499) + '.x' })) {
+    test(`sınırdaki (${MAX_SCAN_LENGTH}) girdi de hızlı: ${k}`, () => {
+      const t0 = process.hrtime.bigint();
+      for (let i = 0; i < 10; i++) { containsUrl(v); imitatesTail(v); }
+      assert.ok(Number(process.hrtime.bigint() - t0) / 1e6 < 50);
+    });
+  }
+  for (const t of ['hxxp://a.com', 'x.co/a', 'ornek\u200b.com', 'bit\u2060.ly', 'klinik\u00ad.com.tr', 'ht\ufefftp://a.com', 'w\u200bww.a.com', 'MERSİS no 1', 'MERSIS 1'])
+    test('reddedilir: ' + JSON.stringify(t), () => { assert.ok(containsUrl(t) || imitatesTail(t)); });
+  for (const t of ['Randevunuz 16.10.2026 14:30, Tel: 0212 555 55 55', 'Tel: 0212 555 55 55 arayın.', 'Aşı günü 16.10.2026 14:30.'])
+    test('cümle içinde kabul: ' + JSON.stringify(t), () => { assert.equal(containsUrl(t), false); assert.equal(imitatesTail(t), false); });
+});
+

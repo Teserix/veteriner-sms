@@ -229,7 +229,15 @@ const TAIL_IMITATION = Object.freeze([
   /\/ret\//,                                                   // sahte ret URL yolu
 ]);
 
+/**
+ * Taranacak en uzun gövde. SMS gövdesi bunun çok altındadır; daha uzun girdi regex'e hiç verilmeden reddedilir
+ * (karesel çalışma süresine / event loop kilidine karşı).
+ */
+export const MAX_SCAN_LENGTH = 1000;
+const tooLong = (s) => String(s ?? '').length > MAX_SCAN_LENGTH;
+
 export function imitatesTail(body) {
+  if (tooLong(body)) return true;
   const n = lookalikeSkeleton(body);
   return TAIL_IMITATION.some((re) => re.test(n));
 }
@@ -243,7 +251,7 @@ const SHORTENER_RE = new RegExp(`(^|[^a-z0-9.-])(${SHORTENER_DOMAINS.map((d) => 
 const URL_RES = Object.freeze([
   /\bhttps?:\/\//,                                   // http:// https://
   /\bwww\./,                                          // www.
-  /\b[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}\//,          // alan.adi/ , klinik.com.tr/yol
+  /\b[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){0,8}\.[a-z]{2,63}\//, // alan.adi/ , klinik.com.tr/yol (sınırlı etiket: ReDoS yok)
   SHORTENER_RE,
 ]);
 
@@ -269,7 +277,7 @@ export function collapseDots(n) {
   return n.replace(DOT_LIKE_RE, '.');
 }
 /** Eğik çizgisiz alan adı: en az iki harfli etiket + bilinen TLD, ardından harf/rakam gelmez ("klinik.com.tr", "bit.ly") */
-const BARE_DOMAIN_RE = new RegExp(`(^|[^a-z0-9-])[a-z0-9][a-z0-9-]*[a-z][a-z0-9-]*(\\.[a-z0-9-]+)*\\.(${TLD_ALT})(?![a-z0-9-])`);
+const BARE_DOMAIN_RE = new RegExp(`(?:^|[^a-z0-9-])(?=[a-z0-9-]{0,62}[a-z])[a-z0-9-]{1,63}(?:\\.[a-z0-9-]{1,63}){0,8}\\.(?:${TLD_ALT})(?![a-z0-9-])`);
 /** Şema: "http://", "hxxp://", "h**ps://", "http :// ", "ftp://"; ayrıca herhangi bir "harf : //" kalıbı */
 const SCHEME_RES = Object.freeze([
   /\bh[tx*]{2}ps?\s*[:;]/,                 // hxxp: hxxps; h**p: (iki noktadan sonra // gelmese de)
@@ -283,6 +291,7 @@ const SCHEME_RES = Object.freeze([
  * "klinik (nokta) com"); bozulmuş şemalar ("hxxp://") da reddedilir. Kısa link listesi yalnız ek kontroldür.
  */
 export function containsUrl(body) {
+  if (tooLong(body)) return true;
   const n = normalizeTr(body);
   if (URL_RES.some((re) => re.test(n))) return true;
   if (SCHEME_RES.some((re) => re.test(n))) return true;
