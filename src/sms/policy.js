@@ -18,7 +18,7 @@ export const MAX_BODY_LENGTH = 320;
 const PREFIX = 'Bilgilendirme: ';
 
 /** Görünmez karakterler: sıfır genişlikli boşluk/birleştirici, yön işaretleri, word joiner, BOM, soft hyphen */
-const INVISIBLE_RE = /[\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\u3164\uFEFF\uFFA0]/g;
+const INVISIBLE_RE = /[\p{Cf}\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\u3164\uFEFF\uFFA0]/gu;
 
 /**
  * Türkçe harf ve aksan farklarını düzleştirir: "İNDİRİM" -> "indirim", "Ücretsiz" -> "ucretsiz".
@@ -204,8 +204,14 @@ export function bodyProblems(body, settings, { clinicId = '', optOutToken = '' }
  * "l" de "i"ye indirgendiği için aşağıdaki desenler bu iskelet biçiminde yazılmıştır ("link" -> "iink").
  */
 const LOOKALIKE = Object.freeze({ l: 'i', 1: 'i', '!': 'i', '|': 'i', '¡': 'i', 0: 'o', 3: 'e', 4: 'a', '@': 'a', 5: 's', $: 's', 7: 't' });
+/** Yunanca/Kiril benzer harfler (küçük harfe indirgenmiş hâlleri) → Latin karşılığı */
+const CONFUSABLE = Object.freeze({
+  'α': 'a', 'β': 'b', 'ε': 'e', 'η': 'n', 'ι': 'i', 'κ': 'k', 'ν': 'v', 'ο': 'o', 'ρ': 'p', 'τ': 't', 'υ': 'u', 'χ': 'x', 'μ': 'm', 'ζ': 'z',
+  'а': 'a', 'в': 'b', 'е': 'e', 'ѕ': 's', 'і': 'i', 'ј': 'j', 'к': 'k', 'м': 'm', 'н': 'h', 'о': 'o', 'р': 'p', 'с': 'c', 'т': 't', 'у': 'y', 'х': 'x', 'ԁ': 'd', 'ӏ': 'l',
+});
+const CONFUSABLE_RE = new RegExp(`[${Object.keys(CONFUSABLE).join('')}]`, 'g');
 export function lookalikeSkeleton(s) {
-  return normalizeTr(s).replace(/[l1!|¡0345@$7]/g, (c) => LOOKALIKE[c]);
+  return normalizeTr(s).replace(CONFUSABLE_RE, (c) => CONFUSABLE[c]).replace(/[l1!|¡0345@$7]/g, (c) => LOOKALIKE[c]);
 }
 
 /**
@@ -213,7 +219,8 @@ export function lookalikeSkeleton(s) {
  * Meşru bakım metni ("randevunuzu iptal etmek için kliniği arayın") yakalanmaz; yalnız satır/bağlantı biçimli taklitler.
  */
 const TAIL_IMITATION = Object.freeze([
-  /\b(mersis|vkn|tckn|iptai|ret|red)\s*[:=]/,              // "Iptal:", "RET =", "MERSIS:", "ipta1："
+  /\b(mersis|vkn|tckn|iptai|ret|red)\s*[:=]/,
+  /\b(mersis|vkn|tckn)\s*[-_#.]?\s*(no\b|[0-9ioeast]+(?![a-z]))/, // rakamlar iskelette harfe döner                // "MERSIS-1", "VKN 123", "MERSIS no"              // "Iptal:", "RET =", "MERSIS:", "ipta1："
   /\bkisa[\s._-]*(iink|bagianti|uri)/,                      // "kısa-link", "kisa link", "kısa bağlantı"
   /\b(iptai|ret|red)\s*(icin|etmek icin)\s*(iink|bagianti|uri|tikia|kisa|sms|mesaj|yaz|gonder)/, // "İptal için kısa-link"
   /\b(iptai|ret)\s*(iinki|bagiantisi)/,                       // "iptal linki", "ret bağlantısı"

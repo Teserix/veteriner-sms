@@ -194,3 +194,18 @@ describe('URL kaçışları: boşluklu alan adı, bozulmuş şema, eğik çizgis
     assert.equal(containsUrl(t), false);
   });
 });
+
+describe('Siber Güvenlik listesi: görünmez karakter, tam genişlik, Yunanca/Kiril benzer harf, MERSIS-1', () => {
+  const tails = ['iptal\u200b: x', 'i\u200bptal: x', 'ret\u00ad: x', 'ıptal： x', 'Ιptal: x', 'Ιπtal: x'.replace('π', 'p'), 'іptal: x', 'iptaI: x', 'ipta1: x', 'MERSIS-1', 'mersis 0123', 'VKN-12', 'TCKN 1'];
+  for (const t of tails) test('reddedilir: ' + JSON.stringify(t), () => {
+    assert.equal(imitatesTail(t), true);
+    assert.ok(bodyProblems(t, tacir).some((p) => p.includes('MERSIS/VKN')));
+  });
+  for (const t of ['İptal için x.co/a', 'vazgeçmek için tıklayın bit.ly/q']) test('URL reddi: ' + JSON.stringify(t), () => {
+    assert.equal(containsUrl(t), true);
+  });
+  for (const t of ['Randevunuzu iptal etmek için kliniği arayın.', 'Kontrol 2 hafta sonra. Ret yok.', 'Aşı 3. doz', 'Merhaba Ayşe Hanım, Boncuk için aşı günü.', 'Vergi bilgisi faturada.']) test('yasal metin kabul: ' + JSON.stringify(t), () => {
+    assert.equal(imitatesTail(t), false);
+    assert.equal(containsUrl(t), false);
+  });
+});
