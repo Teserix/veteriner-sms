@@ -172,3 +172,25 @@ describe('gövdede URL reddi', () => {
     assert.equal(containsUrl(full), true); // tam metinde var, ama denetim yalnız gövdeye bakar
   });
 });
+
+describe('URL kaçışları: boşluklu alan adı, bozulmuş şema, eğik çizgisiz alan adı (PR #3 ONAY notu)', () => {
+  const positives = [
+    'bit . ly', 'bit .ly/x', 'BİT . LY', 'bit,ly', 'bit (.) ly', 'bit [.] ly', 'bit (dot) ly', 'bit nokta ly',
+    'hxxp://ornek', 'hxxps://ornek.com', 'HXXP://x', 'h**p://ornek', 'http : // ornek', 'https:\\\\ornek', 'ftp://ornek',
+    'klinik.com.tr', 'klinik.com', 'Klinik.Com.Tr', 'klinik . com . tr', 'klinik (nokta) com', 'klinik[.]com', 'ornek dot com',
+    'Detay klinikvet.net adresinde', 'w w w.ornek', 'KLİNİK.COM.TR', 'randevu.app', 'ornek.vet',
+  ];
+  for (const t of positives) test('reddedilir: ' + JSON.stringify(t), () => {
+    assert.equal(containsUrl(t), true);
+    assert.ok(bodyProblems(t, tacir).includes(URL_PROBLEM));
+    assert.ok(templateProblems(t).includes(URL_PROBLEM));
+  });
+  const negatives = [
+    'Kedinizi de getirin, Tel: 0212', 'Aşı günü yarın. Lütfen gelin.', 'Pet sahibi. Pet kartını getirin.',
+    'Kontrol 1 hafta sonra. Top oynamasın.', 'Saat: 10:30, kontrol', 'Boncuk, Pamuk ve Tarçın.', 'Randevu 12.10.2026 saat 10.30da.',
+    'Aşı geldi. De gelin.', 'Moda Cd. No:17/2 Kadıköy', 'Doz 2.5 ml. Kontrol 3.gün.',
+  ];
+  for (const t of negatives) test('kabul edilir: ' + JSON.stringify(t), () => {
+    assert.equal(containsUrl(t), false);
+  });
+});

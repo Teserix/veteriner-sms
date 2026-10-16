@@ -232,17 +232,56 @@ export const SHORTENER_DOMAINS = Object.freeze([
   'bit.ly', 't.co', 'tinyurl.com', 'goo.gl', 'is.gd', 'ow.ly', 'cutt.ly', 'rebrand.ly', 't.ly', 'shorturl.at', 'rb.gy',
   'tiny.cc', 's.id', 'buff.ly', 'lnkd.in', 'kisa.link', 'v.gd', 'bl.ink', 'short.io', 'tr.ee', 'qrco.de',
 ]);
+const SHORTENER_RE = new RegExp(`(^|[^a-z0-9.-])(${SHORTENER_DOMAINS.map((d) => d.replace(/\./g, '\\.')).join('|')})(?![a-z0-9-])`);
 const URL_RES = Object.freeze([
   /\bhttps?:\/\//,                                   // http:// https://
   /\bwww\./,                                          // www.
   /\b[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}\//,          // alan.adi/ , klinik.com.tr/yol
-  new RegExp(`(^|[^a-z0-9.-])(${SHORTENER_DOMAINS.map((d) => d.replace(/\./g, '\\.')).join('|')})(?![a-z0-9-])`),
+  SHORTENER_RE,
 ]);
 
-/** Gövdede bağlantı (URL) var mı? NFKC + görünmez karakter temizliğinden sonra bakılır (tam genişlikli "ｈｔｔｐ" de yakalanır) */
+/**
+ * Alan adı sonu olarak kabul edilen üst düzey alan adları (TLD). Türkçede tek başına sık geçen kısa sözcükler
+ * ("de", "da", "at", "in", "ne", "no", "ki", "el", "ve", "top", "pet", "tel", "ar", "es", "it", "am", "be", "se") kasıtlı olarak listede yok; bunlar cümle sonu noktasıyla
+ * birleşince yanlış alarm verirdi. Kısa link alan adları ayrıca SHORTENER_DOMAINS ile yakalanır.
+ */
+export const URL_TLDS = Object.freeze([
+  'com', 'net', 'org', 'tr', 'info', 'biz', 'co', 'io', 'ly', 'gl', 'gd', 'cc', 'id', 'me', 'app', 'link', 'xyz', 'site',
+  'online', 'store', 'shop', 'click', 'live', 'club', 'vip', 'pro', 'dev', 'page', 'web', 'tv', 'ai', 'us', 'uk',
+  'eu', 'ru', 'cn', 'tk', 'ml', 'ga', 'cf', 'gq', 'ws', 'bz', 'su', 'pw', 'sh', 'gg', 'ee', 'lt', 'lv', 'fm', 
+  'ir', 'az', 'kz', 'ua', 'ro', 'bg', 'gr', 'nl', 'ch', 'fr', 'pl', 'cz', 'fi', 'dk', 
+  'mx', 'br', 'au', 'nz', 'jp', 'kr', 'hk', 'sg', 'tw', 'vet', 'health', 'clinic', 'care', 'dog',
+  'onl', 'icu', 'cyou', 'buzz', 'rest', 'fun', 'space', 'tech', 'website', 'email', 'one', 'world', 'today', 'run',
+  'gov', 'edu', 'mil', 'int', 'k12', 'tsk', 'name', 'mobi', 'asia', 'cloud',
+]);
+const TLD_ALT = URL_TLDS.join('|');
+/** Nokta yerine geçen yazımlar: "(.)", "[.]", "(dot)", "[nokta]", " nokta ", "·", "•" ve "。" (NFKC sonrası). Virgül yalnız kısa link listesi için noktaya çevrilir ("bit,ly"). */
+const DOT_LIKE_RE = /\s*(?:\(\s*(?:\.|dot|nokta)\s*\)|\[\s*(?:\.|dot|nokta)\s*\]|\{\s*(?:\.|dot|nokta)\s*\}|(?<=\S)\s+(?:dot|nokta)\s+(?=\S)|[.·•‧∙⋅。])\s*/g;
+/** Boşluk ve noktalama temizlenmiş biçim: "bit . ly" -> "bit.ly", "klinik [.] com" -> "klinik.com" */
+export function collapseDots(n) {
+  return n.replace(DOT_LIKE_RE, '.');
+}
+/** Eğik çizgisiz alan adı: en az iki harfli etiket + bilinen TLD, ardından harf/rakam gelmez ("klinik.com.tr", "bit.ly") */
+const BARE_DOMAIN_RE = new RegExp(`(^|[^a-z0-9-])[a-z0-9][a-z0-9-]*[a-z][a-z0-9-]*(\\.[a-z0-9-]+)*\\.(${TLD_ALT})(?![a-z0-9-])`);
+/** Şema: "http://", "hxxp://", "h**ps://", "http :// ", "ftp://"; ayrıca herhangi bir "harf : //" kalıbı */
+const SCHEME_RES = Object.freeze([
+  /\bh[tx*]{2}ps?\s*[:;]/,                 // hxxp: hxxps; h**p: (iki noktadan sonra // gelmese de)
+  /\b[a-z][a-z0-9+.-]{1,15}\s*[:;]\s*[\/\\]\s*[\/\\]/, // herhangi şema + "//" (boşluklu, ters eğik çizgili)
+  /\bw\s*w\s*w\s*\./,                      // "w w w." boşluklu
+]);
+
+/**
+ * Gövdede bağlantı (URL) var mı? NFKC + görünmez karakter temizliğinden sonra bakılır (tam genişlikli "ｈｔｔｐ" de yakalanır).
+ * Ayrıca boşluk ve noktalama temizlenmiş biçimde alan adına benzeyen her ifade reddedilir ("bit . ly", "klinik.com.tr",
+ * "klinik (nokta) com"); bozulmuş şemalar ("hxxp://") da reddedilir. Kısa link listesi yalnız ek kontroldür.
+ */
 export function containsUrl(body) {
   const n = normalizeTr(body);
-  return URL_RES.some((re) => re.test(n));
+  if (URL_RES.some((re) => re.test(n))) return true;
+  if (SCHEME_RES.some((re) => re.test(n))) return true;
+  const c = collapseDots(n);
+  if (BARE_DOMAIN_RE.test(c) || /\bwww\./.test(c) || SHORTENER_RE.test(c)) return true;
+  return SHORTENER_RE.test(c.replace(/\s*,\s*/g, '.'));
 }
 
 /**
