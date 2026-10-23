@@ -18,7 +18,7 @@ export const MAX_BODY_LENGTH = 320;
 const PREFIX = 'Bilgilendirme: ';
 
 /** Görünmez karakterler: sıfır genişlikli boşluk/birleştirici, yön işaretleri, word joiner, BOM, soft hyphen */
-const INVISIBLE_RE = /[\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\u3164\uFEFF\uFFA0]/g;
+const INVISIBLE_RE = /[\p{Cf}\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\u3164\uFEFF\uFFA0]/gu;
 
 /**
  * Türkçe harf ve aksan farklarını düzleştirir: "İNDİRİM" -> "indirim", "Ücretsiz" -> "ucretsiz".
@@ -204,8 +204,14 @@ export function bodyProblems(body, settings, { clinicId = '', optOutToken = '' }
  * "l" de "i"ye indirgendiği için aşağıdaki desenler bu iskelet biçiminde yazılmıştır ("link" -> "iink").
  */
 const LOOKALIKE = Object.freeze({ l: 'i', 1: 'i', '!': 'i', '|': 'i', '¡': 'i', 0: 'o', 3: 'e', 4: 'a', '@': 'a', 5: 's', $: 's', 7: 't' });
+/** Yunanca/Kiril benzer harfler (küçük harfe indirgenmiş hâlleri) → Latin karşılığı */
+const CONFUSABLE = Object.freeze({
+  'α': 'a', 'β': 'b', 'ε': 'e', 'η': 'n', 'ι': 'i', 'κ': 'k', 'ν': 'v', 'ο': 'o', 'ρ': 'p', 'τ': 't', 'υ': 'u', 'χ': 'x', 'μ': 'm', 'ζ': 'z',
+  'а': 'a', 'в': 'b', 'е': 'e', 'ѕ': 's', 'і': 'i', 'ј': 'j', 'к': 'k', 'м': 'm', 'н': 'h', 'о': 'o', 'р': 'p', 'с': 'c', 'т': 't', 'у': 'y', 'х': 'x', 'ԁ': 'd', 'ӏ': 'l',
+});
+const CONFUSABLE_RE = new RegExp(`[${Object.keys(CONFUSABLE).join('')}]`, 'g');
 export function lookalikeSkeleton(s) {
-  return normalizeTr(s).replace(/[l1!|¡0345@$7]/g, (c) => LOOKALIKE[c]);
+  return normalizeTr(s).replace(CONFUSABLE_RE, (c) => CONFUSABLE[c]).replace(/[l1!|¡0345@$7]/g, (c) => LOOKALIKE[c]);
 }
 
 /**
@@ -213,7 +219,8 @@ export function lookalikeSkeleton(s) {
  * Meşru bakım metni ("randevunuzu iptal etmek için kliniği arayın") yakalanmaz; yalnız satır/bağlantı biçimli taklitler.
  */
 const TAIL_IMITATION = Object.freeze([
-  /\b(mersis|vkn|tckn|iptai|ret|red)\s*[:=]/,              // "Iptal:", "RET =", "MERSIS:", "ipta1："
+  /\b(mersis|vkn|tckn|iptai|ret|red)\s*[:=]/,
+  /\b(mersis|vkn|tckn)\s*[-_#.]?\s*(no\b|[0-9ioeast]+(?![a-z]))/, // rakamlar iskelette harfe döner                // "MERSIS-1", "VKN 123", "MERSIS no"              // "Iptal:", "RET =", "MERSIS:", "ipta1："
   /\bkisa[\s._-]*(iink|bagianti|uri)/,                      // "kısa-link", "kisa link", "kısa bağlantı"
   /\b(iptai|ret|red)\s*(icin|etmek icin)\s*(iink|bagianti|uri|tikia|kisa|sms|mesaj|yaz|gonder)/, // "İptal için kısa-link"
   /\b(iptai|ret)\s*(iinki|bagiantisi)/,                       // "iptal linki", "ret bağlantısı"
@@ -222,7 +229,15 @@ const TAIL_IMITATION = Object.freeze([
   /\/ret\//,                                                   // sahte ret URL yolu
 ]);
 
+/**
+ * Taranacak en uzun gövde. SMS gövdesi bunun çok altındadır; daha uzun girdi regex'e hiç verilmeden reddedilir
+ * (karesel çalışma süresine / event loop kilidine karşı).
+ */
+export const MAX_SCAN_LENGTH = 1000;
+const tooLong = (s) => String(s ?? '').length > MAX_SCAN_LENGTH;
+
 export function imitatesTail(body) {
+  if (tooLong(body)) return true;
   const n = lookalikeSkeleton(body);
   return TAIL_IMITATION.some((re) => re.test(n));
 }
@@ -232,17 +247,57 @@ export const SHORTENER_DOMAINS = Object.freeze([
   'bit.ly', 't.co', 'tinyurl.com', 'goo.gl', 'is.gd', 'ow.ly', 'cutt.ly', 'rebrand.ly', 't.ly', 'shorturl.at', 'rb.gy',
   'tiny.cc', 's.id', 'buff.ly', 'lnkd.in', 'kisa.link', 'v.gd', 'bl.ink', 'short.io', 'tr.ee', 'qrco.de',
 ]);
+const SHORTENER_RE = new RegExp(`(^|[^a-z0-9.-])(${SHORTENER_DOMAINS.map((d) => d.replace(/\./g, '\\.')).join('|')})(?![a-z0-9-])`);
 const URL_RES = Object.freeze([
   /\bhttps?:\/\//,                                   // http:// https://
   /\bwww\./,                                          // www.
-  /\b[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}\//,          // alan.adi/ , klinik.com.tr/yol
-  new RegExp(`(^|[^a-z0-9.-])(${SHORTENER_DOMAINS.map((d) => d.replace(/\./g, '\\.')).join('|')})(?![a-z0-9-])`),
+  /\b[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){0,8}\.[a-z]{2,63}\//, // alan.adi/ , klinik.com.tr/yol (sınırlı etiket: ReDoS yok)
+  SHORTENER_RE,
 ]);
 
-/** Gövdede bağlantı (URL) var mı? NFKC + görünmez karakter temizliğinden sonra bakılır (tam genişlikli "ｈｔｔｐ" de yakalanır) */
+/**
+ * Alan adı sonu olarak kabul edilen üst düzey alan adları (TLD). Türkçede tek başına sık geçen kısa sözcükler
+ * ("de", "da", "at", "in", "ne", "no", "ki", "el", "ve", "top", "pet", "tel", "ar", "es", "it", "am", "be", "se") kasıtlı olarak listede yok; bunlar cümle sonu noktasıyla
+ * birleşince yanlış alarm verirdi. Kısa link alan adları ayrıca SHORTENER_DOMAINS ile yakalanır.
+ */
+export const URL_TLDS = Object.freeze([
+  'com', 'net', 'org', 'tr', 'info', 'biz', 'co', 'io', 'ly', 'gl', 'gd', 'cc', 'id', 'me', 'app', 'link', 'xyz', 'site',
+  'online', 'store', 'shop', 'click', 'live', 'club', 'vip', 'pro', 'dev', 'page', 'web', 'tv', 'ai', 'us', 'uk',
+  'eu', 'ru', 'cn', 'tk', 'ml', 'ga', 'cf', 'gq', 'ws', 'bz', 'su', 'pw', 'sh', 'gg', 'ee', 'lt', 'lv', 'fm', 
+  'ir', 'az', 'kz', 'ua', 'ro', 'bg', 'gr', 'nl', 'ch', 'fr', 'pl', 'cz', 'fi', 'dk', 
+  'mx', 'br', 'au', 'nz', 'jp', 'kr', 'hk', 'sg', 'tw', 'vet', 'health', 'clinic', 'care', 'dog',
+  'onl', 'icu', 'cyou', 'buzz', 'rest', 'fun', 'space', 'tech', 'website', 'email', 'one', 'world', 'today', 'run',
+  'gov', 'edu', 'mil', 'int', 'k12', 'tsk', 'name', 'mobi', 'asia', 'cloud',
+]);
+const TLD_ALT = URL_TLDS.join('|');
+/** Nokta yerine geçen yazımlar: "(.)", "[.]", "(dot)", "[nokta]", " nokta ", "·", "•" ve "。" (NFKC sonrası). Virgül yalnız kısa link listesi için noktaya çevrilir ("bit,ly"). */
+const DOT_LIKE_RE = /\s*(?:\(\s*(?:\.|dot|nokta)\s*\)|\[\s*(?:\.|dot|nokta)\s*\]|\{\s*(?:\.|dot|nokta)\s*\}|(?<=\S)\s+(?:dot|nokta)\s+(?=\S)|[.·•‧∙⋅。])\s*/g;
+/** Boşluk ve noktalama temizlenmiş biçim: "bit . ly" -> "bit.ly", "klinik [.] com" -> "klinik.com" */
+export function collapseDots(n) {
+  return n.replace(DOT_LIKE_RE, '.');
+}
+/** Eğik çizgisiz alan adı: en az iki harfli etiket + bilinen TLD, ardından harf/rakam gelmez ("klinik.com.tr", "bit.ly") */
+const BARE_DOMAIN_RE = new RegExp(`(?:^|[^a-z0-9-])(?=[a-z0-9-]{0,62}[a-z])[a-z0-9-]{1,63}(?:\\.[a-z0-9-]{1,63}){0,8}\\.(?:${TLD_ALT})(?![a-z0-9-])`);
+/** Şema: "http://", "hxxp://", "h**ps://", "http :// ", "ftp://"; ayrıca herhangi bir "harf : //" kalıbı */
+const SCHEME_RES = Object.freeze([
+  /\bh[tx*]{2}ps?\s*[:;]/,                 // hxxp: hxxps; h**p: (iki noktadan sonra // gelmese de)
+  /\b[a-z][a-z0-9+.-]{1,15}\s*[:;]\s*[\/\\]\s*[\/\\]/, // herhangi şema + "//" (boşluklu, ters eğik çizgili)
+  /\bw\s*w\s*w\s*\./,                      // "w w w." boşluklu
+]);
+
+/**
+ * Gövdede bağlantı (URL) var mı? NFKC + görünmez karakter temizliğinden sonra bakılır (tam genişlikli "ｈｔｔｐ" de yakalanır).
+ * Ayrıca boşluk ve noktalama temizlenmiş biçimde alan adına benzeyen her ifade reddedilir ("bit . ly", "klinik.com.tr",
+ * "klinik (nokta) com"); bozulmuş şemalar ("hxxp://") da reddedilir. Kısa link listesi yalnız ek kontroldür.
+ */
 export function containsUrl(body) {
+  if (tooLong(body)) return true;
   const n = normalizeTr(body);
-  return URL_RES.some((re) => re.test(n));
+  if (URL_RES.some((re) => re.test(n))) return true;
+  if (SCHEME_RES.some((re) => re.test(n))) return true;
+  const c = collapseDots(n);
+  if (BARE_DOMAIN_RE.test(c) || /\bwww\./.test(c) || SHORTENER_RE.test(c)) return true;
+  return SHORTENER_RE.test(c.replace(/\s*,\s*/g, '.'));
 }
 
 /**

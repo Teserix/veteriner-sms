@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { setupEnv } from './helpers.js';
 
 setupEnv();
-const { bodyProblems, imitatesTail, containsUrl, lookalikeSkeleton, URL_PROBLEM, hasMandatoryTail, templateProblems, contentProblems, composeMessage, identityLine, optOutLine, normalizeTr, TEMPLATE_VARS } = await import('../src/sms/policy.js');
+const { MAX_SCAN_LENGTH, bodyProblems, imitatesTail, containsUrl, lookalikeSkeleton, URL_PROBLEM, hasMandatoryTail, templateProblems, contentProblems, composeMessage, identityLine, optOutLine, normalizeTr, TEMPLATE_VARS } = await import('../src/sms/policy.js');
 const { MAX_MESSAGE_LENGTH } = await import('../src/sms/index.js');
 const { legalProblems, DEFAULT_SETTINGS } = await import('../src/db/tenant.js');
 
@@ -172,3 +172,69 @@ describe('gövdede URL reddi', () => {
     assert.equal(containsUrl(full), true); // tam metinde var, ama denetim yalnız gövdeye bakar
   });
 });
+
+describe('URL kaçışları: boşluklu alan adı, bozulmuş şema, eğik çizgisiz alan adı (PR #3 ONAY notu)', () => {
+  const positives = [
+    'bit . ly', 'bit .ly/x', 'BİT . LY', 'bit,ly', 'bit (.) ly', 'bit [.] ly', 'bit (dot) ly', 'bit nokta ly',
+    'hxxp://ornek', 'hxxps://ornek.com', 'HXXP://x', 'h**p://ornek', 'http : // ornek', 'https:\\\\ornek', 'ftp://ornek',
+    'klinik.com.tr', 'klinik.com', 'Klinik.Com.Tr', 'klinik . com . tr', 'klinik (nokta) com', 'klinik[.]com', 'ornek dot com',
+    'Detay klinikvet.net adresinde', 'w w w.ornek', 'KLİNİK.COM.TR', 'randevu.app', 'ornek.vet',
+  ];
+  for (const t of positives) test('reddedilir: ' + JSON.stringify(t), () => {
+    assert.equal(containsUrl(t), true);
+    assert.ok(bodyProblems(t, tacir).includes(URL_PROBLEM));
+    assert.ok(templateProblems(t).includes(URL_PROBLEM));
+  });
+  const negatives = [
+    'Kedinizi de getirin, Tel: 0212', 'Aşı günü yarın. Lütfen gelin.', 'Pet sahibi. Pet kartını getirin.',
+    'Kontrol 1 hafta sonra. Top oynamasın.', 'Saat: 10:30, kontrol', 'Boncuk, Pamuk ve Tarçın.', 'Randevu 12.10.2026 saat 10.30da.',
+    'Aşı geldi. De gelin.', 'Moda Cd. No:17/2 Kadıköy', 'Doz 2.5 ml. Kontrol 3.gün.',
+  ];
+  for (const t of negatives) test('kabul edilir: ' + JSON.stringify(t), () => {
+    assert.equal(containsUrl(t), false);
+  });
+});
+
+describe('Siber Güvenlik listesi: görünmez karakter, tam genişlik, Yunanca/Kiril benzer harf, MERSIS-1', () => {
+  const tails = ['iptal\u200b: x', 'i\u200bptal: x', 'ret\u00ad: x', 'ıptal： x', 'Ιptal: x', 'Ιπtal: x'.replace('π', 'p'), 'іptal: x', 'iptaI: x', 'ipta1: x', 'MERSIS-1', 'mersis 0123', 'VKN-12', 'TCKN 1'];
+  for (const t of tails) test('reddedilir: ' + JSON.stringify(t), () => {
+    assert.equal(imitatesTail(t), true);
+    assert.ok(bodyProblems(t, tacir).some((p) => p.includes('MERSIS/VKN')));
+  });
+  for (const t of ['İptal için x.co/a', 'vazgeçmek için tıklayın bit.ly/q']) test('URL reddi: ' + JSON.stringify(t), () => {
+    assert.equal(containsUrl(t), true);
+  });
+  for (const t of ['Randevunuzu iptal etmek için kliniği arayın.', 'Kontrol 2 hafta sonra. Ret yok.', 'Aşı 3. doz', 'Merhaba Ayşe Hanım, Boncuk için aşı günü.', 'Vergi bilgisi faturada.']) test('yasal metin kabul: ' + JSON.stringify(t), () => {
+    assert.equal(imitatesTail(t), false);
+    assert.equal(containsUrl(t), false);
+  });
+});
+
+describe('ReDoS regresyonu ve eksik vaka testleri (Siber Güvenlik DÜZELTME 1f04e3a)', () => {
+  const N = 50000;
+  const evil = {
+    'a×50k': 'a'.repeat(N), 'a.×25k': 'a.'.repeat(N / 2), 'ab.com×8333': 'ab.com'.repeat(8333) + 'x', 'a-×25k': 'a-'.repeat(N / 2) + '.x',
+    'bosluk': ' '.repeat(N) + 'x', 'nokta': '.'.repeat(N), 'h**': 'h' + '*'.repeat(N), 'sema': 'ab:' + ' '.repeat(N) + '/',
+  };
+  for (const [k, v] of Object.entries(evil)) test(`50k girdi 50 ms altında: ${k}`, () => {
+    const t0 = process.hrtime.bigint();
+    containsUrl(v); imitatesTail(v); bodyProblems(v, tacir);
+    assert.ok(Number(process.hrtime.bigint() - t0) / 1e6 < 50);
+  });
+  test('sınır üstü gövde regex\'e verilmeden reddedilir', () => {
+    assert.equal(containsUrl('a'.repeat(MAX_SCAN_LENGTH + 1)), true);
+    assert.equal(containsUrl('a'.repeat(MAX_SCAN_LENGTH)), false);
+  });
+  for (const [k, v] of Object.entries({ 'a×1000': 'a'.repeat(1000), 'a.×500': 'a.'.repeat(500), 'ab.com×166': 'ab.com'.repeat(166) + 'x', 'a-×500': 'a-'.repeat(499) + '.x' })) {
+    test(`sınırdaki (${MAX_SCAN_LENGTH}) girdi de hızlı: ${k}`, () => {
+      const t0 = process.hrtime.bigint();
+      for (let i = 0; i < 10; i++) { containsUrl(v); imitatesTail(v); }
+      assert.ok(Number(process.hrtime.bigint() - t0) / 1e6 < 50);
+    });
+  }
+  for (const t of ['hxxp://a.com', 'x.co/a', 'ornek\u200b.com', 'bit\u2060.ly', 'klinik\u00ad.com.tr', 'ht\ufefftp://a.com', 'w\u200bww.a.com', 'MERSİS no 1', 'MERSIS 1'])
+    test('reddedilir: ' + JSON.stringify(t), () => { assert.ok(containsUrl(t) || imitatesTail(t)); });
+  for (const t of ['Randevunuz 16.10.2026 14:30, Tel: 0212 555 55 55', 'Tel: 0212 555 55 55 arayın.', 'Aşı günü 16.10.2026 14:30.'])
+    test('cümle içinde kabul: ' + JSON.stringify(t), () => { assert.equal(containsUrl(t), false); assert.equal(imitatesTail(t), false); });
+});
+
